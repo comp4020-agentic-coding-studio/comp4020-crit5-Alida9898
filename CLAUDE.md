@@ -16,7 +16,12 @@ which deliverable applies. Read both before you plan or build.
 - Open the page in a browser and look at it. The rendered page is the truth;
   your mental model of it isn't.
 - When a check fails, read its output before you change anything.
-- Never commit a red state.
+- Never commit a red state --- with one exception, and only one: a spec test
+  written before the thing it tests, which is red *because the work hasn't
+  happened yet*. Those are the week's contract, they land in the first commit,
+  and turning each one green is the process evidence `PROCESS.md` cites. A test
+  that went red because something broke is never in this category. If you can't
+  say in one sentence why a red test is the planned starting state, it isn't.
 
 ## The link-preview card
 
@@ -120,36 +125,42 @@ Three things that cost time the first run:
 
 Two checks only a real browser can do, so they do not belong in `pnpm check`:
 
-- **Colour contrast.** `spec/accessibility.test.ts` runs axe in jsdom, which has
-  no layout, so every geometric rule is skipped --- contrast included. `ab a11y`
-  runs the same axe in Chrome and does evaluate it. Note that axe cannot measure
-  SVG `<text>` at all and reports those as *incomplete*, so nothing automatic
-  covers them --- a hand-check goes stale the moment the background moves, which
-  is how amber labels ended up on a cream plate at 1.77:1 after being measured at
-  8.6:1 on the dark. Where the geometry allows it, make the rule positional
-  instead --- in A1, `spec/pages.test.ts` forbade a label inside a plate's rect.
-- **A gradient background downgrades contrast from a check to a guess.** On C4's
-  dark page `ab a11y` returns *incomplete*, not a pass, for every text node: axe
-  cannot resolve one background colour behind them. So nothing automatic covers
-  it at all --- not jsdom, not Chrome. Measure by hand against the *lightest*
-  point of the gradient (worst case for pale text) and write the ratio into the
-  CSS beside the value, because that hand-check expires the moment either the
-  palette or the gradient moves and nothing will say so.
+- **Colour contrast, and the widening list of things axe cannot see.**
+  `spec/accessibility.test.ts` runs axe in jsdom, which has no layout, so every
+  geometric rule is skipped --- contrast included. `ab a11y` runs the same axe
+  in Chrome and does evaluate it, but only for what it can resolve, and three
+  things in a row have fallen outside that:
+  - **SVG `<text>`** axe cannot measure at all, reporting *incomplete*. A
+    hand-check goes stale the moment the background moves, which is how amber
+    labels ended up on a cream plate at 1.77:1 after being measured at 8.6:1 on
+    the dark. Where the geometry allows it, make the rule positional instead ---
+    in A1, `spec/pages.test.ts` forbade a label inside a plate's rect.
+  - **A gradient background** returns *incomplete* for every text node over it,
+    because axe cannot resolve one background colour behind them. Measure by
+    hand against the *lightest* point (worst case for pale text) and write the
+    ratio into the CSS beside the value.
+  - **A `<canvas>` is opaque to axe** --- there are no nodes inside it, so a
+    WebGL or 2D scene is not partially covered, it is entirely uncovered. Nothing
+    automatic says anything about it, in jsdom or in Chrome. If the prototype's
+    whole point lives on a canvas, then *all* of its contrast is a hand-check,
+    and the only durable version of that is to drive the palette from named
+    constants in one module and measure those once. Colours picked inline at
+    each call site cannot be audited at all.
+
+  Every one of these expires silently when the palette moves, so write the
+  measured ratio next to the constant, not in a commit message.
 - **Both marking viewports.** 1920x1080 and 390x844 each count in full. Check
   that the core interaction is reachable without a scroll at 1080 --- a page
   whose interaction is below the fold has buried its own point.
 
 ## Navigation: collapse it on a phone, and make the collapse survive no JS
 
-Three pages means a nav of three links plus the title. At 390px that fitted on
-one line --- 358px of 390 --- so nothing looked broken. That is exactly why it
-was worth changing: it was spending a whole row of vertical space on the viewport
-that has the least of it, directly above the fold, on the page whose interaction
-has to be reachable without scrolling.
-
-So: more than two or three destinations in a horizontal nav, collapse them behind
-a button below the phone breakpoint. Two traps, both of which look completely
-finished while broken:
+More than two or three destinations in a horizontal nav, collapse them behind a
+button below the phone breakpoint. In A1 a three-link nav fitted on one line at
+390px --- 358px of 390 --- so nothing *looked* broken; it was still spending a
+whole row of vertical space on the viewport with the least of it, directly above
+the fold, on the page whose interaction has to be reachable without scrolling.
+Two traps, both of which look completely finished while broken:
 
 - **Ship the button with `hidden` and let the script remove it.** A hamburger
   that assumes its script ran leaves a button that opens nothing when it did
@@ -160,8 +171,11 @@ finished while broken:
   state is stale and nothing on screen says so. This is found by users, not by
   you, because you never rotate your own test device mid-session.
 
-In A1 both were pinned in `spec/nav.test.ts` and `spec/pages.test.ts`; if this
-prototype grows a nav, pin them again here rather than trusting the memory.
+In A1 both were pinned in `spec/nav.test.ts` and `spec/pages.test.ts`.
+`spec/invariants.test.ts` requires a `<nav>` landmark on every page, so even a
+single-screen prototype carries one --- while it stays a single link this
+section costs nothing, and the moment it grows past that, pin them again rather
+than trusting the memory.
 
 ## A gesture's direction is untestable where it usually lives
 
@@ -178,6 +192,66 @@ and call it from the handler. `pouredLevel(startLevel, dy, travel)` in
 in `spec/tuning.test.ts`. Applies to anything with a sign in it --- scroll,
 drag, zoom, scrub.
 
+## Crit 5: the constraints are the design (retires with this brief)
+
+Agreed before any code was written. These leave with the brief; what carries
+forward is the move underneath them --- turning a constraint into a grep rather
+than a promise, so that breaking it is a red check and not a code review someone
+has to remember to do. The sensors live in `spec/architecture.test.ts`, and the
+constraints no sensor can hold are named as such at the end.
+
+**Connectivity is declared, never inferred.**
+
+- A module's rotation is a finite enumeration of states, not a continuous angle.
+- Each rotation state carries a hand-written connectivity table declaring which
+  ports connect, and which way flow goes.
+- At runtime, look the answer up. No raycasting, no screen-space projection, no
+  bounding-box overlap --- no deriving connectivity from geometry of any kind.
+- Visual alignment is the art's job to place and the table's job to declare. It
+  is never the code's job to work out.
+- Level data is hand-written literals, not generated.
+
+Worth a rule rather than a preference because geometric connectivity fails
+*softly*: a pipe that looks joined and isn't reads as a bug in the puzzle rather
+than a bug in the tolerance, and the fix is a magic epsilon nobody can defend. A
+table is wrong loudly --- the port is in it or it is not --- and it is the thing
+a rule test can actually assert.
+
+**Rendering is flat and orthographic.**
+
+- Three.js. `OrthographicCamera` only; no `PerspectiveCamera`.
+- No `OrbitControls`. Camera positions are a finite enumeration, animated
+  between.
+- Built-in Three.js primitives only. No imported models, no textures.
+- Flat solid-colour materials. No PBR, no normal maps, no shadow maps, no
+  ambient occlusion, no post-processing.
+- Four-colour palette: lapis blue, ochre gold, sandstone off-white, date-palm
+  green. One module owns them as named constants --- see the canvas bullet under
+  agent-browser for why inline colours cannot be audited at all.
+
+**Scope of this version.**
+
+- No audio.
+- Desktop input only: mouse click, arrow keys, Space. Mobile has to open; it
+  does not have to be playable.
+- No combat, no timer, no score, no health, no written tutorial.
+- Rotation is click-triggered, never dragged. Input is refused while a rotation
+  animation is running --- which is state with an edge in it, so by the pure
+  function rule above it belongs in a function a test can call, not inside the
+  click handler.
+
+**What a sensor holds:** every banned API is a string in the source, so one grep
+test covers `PerspectiveCamera`, `OrbitControls`, model and texture loaders, PBR
+materials, shadows, post-processing, `Raycaster`, `Box3`, projection, audio, and
+drag listeners. Beyond grep: every module type crossed with every rotation state
+resolves in the connectivity table, and every colour in the scene traces to the
+palette module.
+
+**What no sensor holds,** so it is on you and on the crit: whether the level
+data is genuinely hand-authored, whether the art actually lines up with what the
+table claims, and whether rotating a module *feels* like the right length of
+animation. The first two are read; the third is only ever played.
+
 ## Facts about this stack that have each cost a run
 
 - **`tsconfig.include` is `["*.ts", "spec", "scripts"]`.** Modules under `src/` are
@@ -193,9 +267,8 @@ drag, zoom, scrub.
   `display: none` at specificity (0,1,0), so `.steps { display: flex }` beats it
   and the attribute does nothing at all. Pair every attribute-driven hide with
   its own `.thing[hidden] { display: none }`.
-- **`filter: invert()` only works on line art.** A tonal drawing inverted is a
-  photographic negative: the darkest thing in it --- eye sockets, holes --- comes
-  out brightest, and no global tone curve fixes it. Print it positive instead.
-  Related: never back a lossy image with a rect in a "matching" colour. The paper
-  survives compression a few levels off and seams against it at a hard edge; bake
-  the margin into the image so there is only one surface.
+- **Raster, when a week uses it:** `filter: invert()` only works on line art (a
+  tonal drawing inverted is a photographic negative --- eye sockets come out
+  brightest), and never back a lossy image with a rect in a "matching" colour,
+  because the paper survives compression a few levels off and seams against it
+  at a hard edge. Bake the margin into the image so there is only one surface.
