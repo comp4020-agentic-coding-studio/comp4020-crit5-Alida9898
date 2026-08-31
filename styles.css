@@ -1,16 +1,222 @@
+/* The four colours are owned by src/palette.ts and injected as custom
+   properties at mount. The fallbacks below exist only so the page is legible
+   before the script runs; spec/palette.test.ts pins them to the module so the
+   two can never drift. */
+:root {
+  --sandstone: #ede0c8;
+  --lapis: #1d4e89;
+  --ochre: #c08a2e;
+  --grove: #4f7942;
+}
+
+* {
+  box-sizing: border-box;
+}
+
 body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
   margin: 0;
-  padding: 2rem;
+  background: var(--sandstone);
+  color: var(--lapis);
   font-family: system-ui, sans-serif;
-  line-height: 1.6;
-  color: #1a1a1a;
+  line-height: 1.5;
+}
+
+header {
+  padding: 1.25rem 1rem 0;
+  text-align: center;
+}
+
+/* Kept in the accessibility tree, out of the picture. */
+.sr-only {
+  position: absolute;
+  overflow: hidden;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 main {
-  max-width: 40rem;
-  margin: 0 auto;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 1rem 1rem 1.5rem;
 }
 
-a {
-  color: #0b5fff;
+h1 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 500;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+
+  /* The title names the game; it never explains it. No opacity here: fading
+     lapis on sandstone drops it under 4.5:1, which `ab a11y` catches in real
+     Chrome and jsdom never would. Weight and size carry the hierarchy. */
+}
+
+.field {
+  display: flex;
+  align-items: stretch;
+  gap: clamp(0.5rem, 2vw, 1.5rem);
+}
+
+/* Two columns of liquid: what is left, and what has arrived. The whole
+   tutorial is that one drops while the other does not. */
+.gauge {
+  position: relative;
+  width: clamp(1.1rem, 2.4vw, 1.9rem);
+  overflow: hidden;
+  border: 2px solid var(--lapis);
+  border-radius: 999px;
+}
+
+.gauge i {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: var(--fill, 0%);
+  transition: height 260ms ease-out;
+}
+
+.tank i {
+  background: var(--lapis);
+}
+
+.grove {
+  border-color: var(--grove);
+}
+
+.grove i {
+  background: var(--grove);
+}
+
+/* The stage sets the height and the gauges stretch to it, rather than the row
+   setting a height the aspect-ratio then disagrees with. */
+.stage {
+  position: relative;
+  flex: none;
+  height: min(62vh, 66vw);
+  border-radius: 4px;
+  transition: box-shadow 220ms ease-out;
+}
+
+.stage canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.stage.won {
+  box-shadow: 0 0 0 5px var(--grove);
+}
+
+.stage.lost {
+  box-shadow: 0 0 0 5px var(--ochre);
+}
+
+/* The pick overlay: real buttons over the canvas, sized to the grid the
+   camera is showing. No raycast, and the game stays keyboard-reachable. */
+.cells {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  margin: auto;
+}
+
+.cell {
+  position: relative;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+.cell.live {
+  cursor: pointer;
+}
+
+.cell:disabled {
+  cursor: default;
+}
+
+/* The invitation. A turnable module breathes until the player moves; once
+   water is running it stops, because by then the board is doing the teaching. */
+.cell.live::after {
+  position: absolute;
+  border: 2px solid var(--lapis);
+  border-radius: 50%;
+  animation: invite 1.7s ease-in-out infinite;
+  content: "";
+  inset: 12%;
+  opacity: 0.5;
+}
+
+.running .cell.live::after {
+  animation: none;
+  opacity: 0;
+}
+
+.cell:focus-visible {
+  outline: 3px solid var(--lapis);
+  outline-offset: -3px;
+}
+
+@keyframes invite {
+  0%,
+  100% {
+    opacity: 0.35;
+    transform: scale(0.94);
+  }
+
+  50% {
+    opacity: 0.85;
+    transform: scale(1.06);
+  }
+}
+
+.progress {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.progress li {
+  width: 0.5rem;
+  height: 0.5rem;
+  border: 1px solid var(--lapis);
+  border-radius: 50%;
+  transition: background 200ms ease-out;
+}
+
+.progress li.here {
+  background: var(--lapis);
+}
+
+.progress li.done {
+  border-color: var(--grove);
+  background: var(--grove);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cell.live::after {
+    animation: none;
+    opacity: 0.6;
+  }
+
+  .gauge i,
+  .stage {
+    transition: none;
+  }
 }

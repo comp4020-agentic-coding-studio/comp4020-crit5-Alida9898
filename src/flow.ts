@@ -16,6 +16,19 @@ export type FlowResult = {
   leaked: number;
 };
 
+/** Everything `flow` learned on the way, for the renderer to draw.
+ *
+ *  The game needs none of this — it is what lets a player SEE why the tank is
+ *  dropping, which is the whole no-tutorial bet: water visibly pouring out of
+ *  an open end explains the cost in a way no sentence would. */
+export type Trace = FlowResult & {
+  /** Cells water actually ran through, and how much. */
+  wet: Map<number, number>;
+  /** Where water left the board: the cell it left from, the port it left by,
+   *  and how much went. */
+  spills: { index: number; port: Port; amount: number }[];
+};
+
 /** The cell one step from `index` in direction `dir`, or null off the grid. */
 export function neighbour(grid: Grid, index: number, dir: Port): number | null {
   const x = index % grid.width;
@@ -44,11 +57,29 @@ export function findSource(grid: Grid): number | null {
  * quietly dropped, which is what makes the tank readable on screen.
  */
 export function flow(grid: Grid, units: number): FlowResult {
+  const { delivered, leaked } = trace(grid, units);
+  return { delivered, leaked };
+}
+
+/** `flow`, plus the record of where the water went. Same walk, same rules. */
+export function trace(grid: Grid, units: number): Trace {
+  const wet = new Map<number, number>();
+  const spills: { index: number; port: Port; amount: number }[] = [];
   const start = findSource(grid);
-  if (start === null || units <= 0) return { delivered: 0, leaked: Math.max(units, 0) };
+  if (start === null || units <= 0) {
+    return { delivered: 0, leaked: Math.max(units, 0), wet, spills };
+  }
 
   let delivered = 0;
   let leaked = 0;
+
+  const soak = (index: number, amount: number): void => {
+    wet.set(index, (wet.get(index) ?? 0) + amount);
+  };
+  const spill = (index: number, port: Port, amount: number): void => {
+    leaked += amount;
+    spills.push({ index, port, amount });
+  };
 
   // A cell entered from the same port twice is a loop. Water going round
   // again is water we never see leave, so it counts as spilled rather than
@@ -67,6 +98,8 @@ export function flow(grid: Grid, units: number): FlowResult {
       leaked += step.amount;
       continue;
     }
+
+    soak(step.index, step.amount);
 
     if (cell.kind === "sink") {
       delivered += step.amount;
@@ -88,7 +121,9 @@ export function flow(grid: Grid, units: number): FlowResult {
         : exitsFrom(cell.kind, cell.rotation, step.entry);
 
     if (exits.length === 0) {
-      leaked += step.amount; // dead end
+      // A dead end: water arrived and the table sends it nowhere, so it
+      // pours back out the way it came.
+      spill(step.index, step.entry ?? sourceExit(cell.rotation), step.amount);
       continue;
     }
 
@@ -96,7 +131,7 @@ export function flow(grid: Grid, units: number): FlowResult {
     for (const exit of exits) {
       const next = neighbour(grid, step.index, exit);
       if (next === null) {
-        leaked += share; // off the edge
+        spill(step.index, exit, share); // off the edge
         continue;
       }
       const target = grid.cells[next];
@@ -104,12 +139,12 @@ export function flow(grid: Grid, units: number): FlowResult {
       if (!target || !accepts(target.kind, target.rotation, facing)) {
         // Empty ground, or a neighbour whose table has no entry facing us.
         // This is the entire leak rule: a lookup, not a tolerance.
-        leaked += share;
+        spill(step.index, exit, share);
         continue;
       }
       queue.push({ index: next, entry: facing, amount: share });
     }
   }
 
-  return { delivered, leaked };
+  return { delivered, leaked, wet, spills };
 }

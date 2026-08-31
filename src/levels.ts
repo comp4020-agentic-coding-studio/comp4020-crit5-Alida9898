@@ -40,10 +40,9 @@ export const LEVELS: Level[] = [
     name: "one turn",
     tank: 10,
     target: 6,
-    grid: grid(4, 4, [
+    grid: grid(4, 3, [
       _, _, _, _,
       fixed("source", 1), fixed("straight", 1), turnable("straight", 0), fixed("sink", 0),
-      _, _, _, _,
       _, _, _, _,
     ]),
   },
@@ -58,10 +57,9 @@ export const LEVELS: Level[] = [
     name: "the open arm",
     tank: 20,
     target: 14,
-    grid: grid(4, 4, [
+    grid: grid(4, 3, [
       _, turnable("elbow", 3), fixed("straight", 1), fixed("elbow", 2),
       fixed("source", 1), fixed("tee", 0), fixed("straight", 1), fixed("sink", 0),
-      _, _, _, _,
       _, _, _, _,
     ]),
   },
@@ -73,11 +71,9 @@ export const LEVELS: Level[] = [
     name: "two ways round",
     tank: 24,
     target: 16,
-    grid: grid(5, 5, [
-      _, _, _, _, _,
+    grid: grid(5, 3, [
       _, turnable("elbow", 2), fixed("straight", 1), fixed("straight", 1), turnable("elbow", 3),
       fixed("source", 1), fixed("tee", 0), turnable("straight", 0), fixed("straight", 1), fixed("sink", 0),
-      _, _, _, _, _,
       _, _, _, _, _,
     ]),
   },
@@ -88,11 +84,9 @@ export const LEVELS: Level[] = [
     name: "no slack",
     tank: 30,
     target: 21,
-    grid: grid(5, 5, [
-      _, _, _, _, _,
+    grid: grid(5, 3, [
       fixed("source", 1), turnable("elbow", 0), _, turnable("elbow", 0), fixed("sink", 0),
       _, turnable("elbow", 2), turnable("straight", 0), turnable("elbow", 0), _,
-      _, _, _, _, _,
       _, _, _, _, _,
     ]),
   },
