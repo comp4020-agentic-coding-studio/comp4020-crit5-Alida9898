@@ -254,9 +254,12 @@ animation. The first two are read; the third is only ever played.
 
 ## Facts about this stack that have each cost a run
 
-- **`tsconfig.include` is `["*.ts", "spec", "scripts"]`.** Modules under `src/` are
-  never typechecked. Entry modules live at the repo root --- that is why `main.ts`
-  is there, and moving one "somewhere tidier" silently turns off its types.
+- **`tsconfig.include` is a whitelist, and a directory missing from it is
+  silently untypechecked.** The template ships `["*.ts", "spec", "scripts"]`, so
+  a module moved to `src/` "somewhere tidier" loses its types without a word ---
+  `tsc --noEmit` stays green because it never looked. C5 added `"src"` to the
+  list on purpose. Adding a directory is fine; *moving code into one that isn't
+  listed* is the trap. Check the array before you reach for a new folder.
 - **jsdom: `document.textContent` is `null`** on a Document node, per the DOM
   spec. Use `document.body.textContent`. A test that reads the former does not
   error, it just matches nothing --- so it passes while asserting nothing.
