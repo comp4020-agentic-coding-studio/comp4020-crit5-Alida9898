@@ -27,14 +27,34 @@ import type { Trace } from "./flow.ts";
 import { GROVE, LAPIS, OCHRE, SANDSTONE } from "./palette.ts";
 
 const CELL = 1;
-const PIPE = 0.24;
+const PIPE = 0.19;
+/** Channels stand this far proud of the sand. Under an oblique camera this is
+ *  the difference between a solid object and a painted line. */
+const RAISE = 0.16;
 
-/** Two enumerated camera positions, animated between. No free rotation. */
-export type View = "plan" | "raised";
+/**
+ * Two enumerated camera positions, animated between. No free rotation.
+ *
+ * Both are OBLIQUE. A camera directly overhead renders a 3D scene as a floor
+ * plan — flat materials plus a plan view is a 2D picture drawn with a 3D
+ * engine, whatever the renderer underneath is doing.
+ *
+ * The tilt is what makes the DOM pick overlay tricky, and the reason it is
+ * still fine: under an ORTHOGRAPHIC camera the ground plane projects by an
+ * affine map, so CSS `rotateX` reproduces it exactly. For a camera at
+ * (0, h, d) looking at the origin, that angle is atan(d/h) — see TILT below,
+ * which `board.ts` applies to the overlay. Keep the two in step: move a camera
+ * here and the buttons stop lining up with what they sit on.
+ */
+export type View = "play" | "result";
 const VIEWS: Record<View, [number, number, number]> = {
-  plan: [0, 12, 0.001],
-  raised: [0, 8, 8],
+  play: [0, 8, 8],
+  result: [0, 4.6, 9.2],
 };
+
+/** The playing camera's tilt, in radians and degrees. The overlay uses it. */
+export const TILT = Math.atan(VIEWS.play[2] / VIEWS.play[1]);
+export const TILT_DEG = (TILT * 180) / Math.PI;
 
 const flat = (colour: string): MeshBasicMaterial => new MeshBasicMaterial({ color: colour });
 
@@ -66,57 +86,93 @@ export function angleFor(rotation: Rotation): number {
 
 type FlatMesh = Mesh<BoxGeometry, MeshBasicMaterial>;
 
-function arm(port: Port, colour: string): FlatMesh {
+/**
+ * A length of channel, and the water that may run in it.
+ *
+ * Two objects, not one recoloured object. Water that is merely the channel
+ * painted blue floods the whole width and the masonry disappears under it —
+ * on screen it stops being water IN something. A narrower, higher bar sitting
+ * inside a trough that never moves reads as what it is, and the channel stays
+ * legible whether it is running or dry.
+ */
+function arm(port: Port, colour: string): { channel: FlatMesh; water: FlatMesh } {
   const [dx, dz] = HEADING[port];
-  const mesh = new Mesh(new BoxGeometry(PIPE, PIPE, CELL / 2 + PIPE / 2), flat(colour));
-  mesh.position.set((dx * CELL) / 4, 0, (dz * CELL) / 4);
-  if (dx !== 0) mesh.rotation.y = Math.PI / 2;
-  return mesh;
+  const length = CELL / 2 + PIPE / 2;
+  const channel = new Mesh(new BoxGeometry(PIPE, PIPE * 1.4, length), flat(colour));
+  channel.position.set((dx * CELL) / 4, RAISE, (dz * CELL) / 4);
+  const water = new Mesh(new BoxGeometry(PIPE * 0.5, PIPE * 0.8, length), flat(LAPIS));
+  water.position.set((dx * CELL) / 4, RAISE + PIPE * 0.42, (dz * CELL) / 4);
+  water.visible = false;
+  if (dx !== 0) {
+    channel.rotation.y = Math.PI / 2;
+    water.rotation.y = Math.PI / 2;
+  }
+  return { channel, water };
 }
 
 /** The pieces that turn blue when water runs through them. Keeping them in a
  *  list is what lets the board SHOW the route rather than only its result. */
-type Built = { group: Group; arms: FlatMesh[]; core: Mesh | null; body: FlatMesh | null };
+type Built = { group: Group; waters: FlatMesh[]; core: Mesh | null };
 
 function moduleGroup(kind: Kind): Built {
   const group = new Group();
-  const arms: FlatMesh[] = [];
+  // Every bit of water in this module, hidden until it runs.
+  const waters: FlatMesh[] = [];
   let core: Mesh | null = null;
-  // The junction block at a module's centre. It has to wet with its arms, or a
-  // running channel has a dry square sitting in the middle of it.
-  let body: FlatMesh | null = null;
 
   if (kind === "source") {
-    group.add(new Mesh(new CylinderGeometry(0.3, 0.34, 0.42, 16), flat(SANDSTONE)));
-    core = new Mesh(new CylinderGeometry(0.21, 0.21, 0.46, 16), flat(LAPIS));
-    core.position.y = 0.04;
+    // A wellhead: a stone collar standing well clear of the sand, brim full.
+    const collar = new Mesh(new CylinderGeometry(0.32, 0.36, 0.5, 16), flat(SANDSTONE));
+    collar.position.y = RAISE + 0.1;
+    group.add(collar);
+    core = new Mesh(new CylinderGeometry(0.23, 0.23, 0.54, 16), flat(LAPIS));
+    core.position.y = RAISE + 0.14;
     group.add(core);
   } else if (kind === "sink") {
-    group.add(new Mesh(new BoxGeometry(0.88, 0.14, 0.88), flat(GROVE)));
+    const bed = new Mesh(new BoxGeometry(0.9, 0.2, 0.9), flat(GROVE));
+    bed.position.y = RAISE - 0.02;
+    group.add(bed);
     // A pool at the centre of the grove. It fills as water arrives, which is
     // the only "score" the game has and it is not a number.
-    core = new Mesh(new BoxGeometry(0.1, 0.18, 0.1), flat(LAPIS));
-    core.position.y = 0.06;
+    core = new Mesh(new BoxGeometry(0.1, 0.24, 0.1), flat(LAPIS));
+    core.position.y = RAISE + 0.06;
     group.add(core);
+    // The palm is back: from overhead a date palm is a circle and says
+    // nothing, but at a tilt it is the tallest thing on the board and reads as
+    // the place the water is FOR. One, set back, so its crown breaks the
+    // silhouette against the sand instead of merging with the bed below it.
+    const trunk = new Mesh(new CylinderGeometry(0.05, 0.07, 0.72, 8), flat(SANDSTONE));
+    trunk.position.set(0.06, RAISE + 0.4, -0.34);
+    group.add(trunk);
+    const crown = new Mesh(new CylinderGeometry(0.02, 0.3, 0.3, 8), flat(GROVE));
+    crown.position.set(0.06, RAISE + 0.88, -0.34);
+    group.add(crown);
   } else {
-    body = new Mesh(new BoxGeometry(0.34, 0.18, 0.34), flat(SANDSTONE));
-    group.add(body);
+    // The junction block, and the water standing in it.
+    const block = new Mesh(new BoxGeometry(0.3, PIPE * 1.4, 0.3), flat(SANDSTONE));
+    block.position.y = RAISE;
+    group.add(block);
+    const pool = new Mesh(new BoxGeometry(0.17, PIPE * 0.8, 0.17), flat(LAPIS));
+    pool.position.y = RAISE + PIPE * 0.42;
+    pool.visible = false;
+    waters.push(pool);
+    group.add(pool);
   }
 
   const colour = kind === "sink" ? GROVE : SANDSTONE;
   for (const port of BASE_PORTS[kind]) {
-    const mesh = arm(port, colour);
-    arms.push(mesh);
-    group.add(mesh);
+    const { channel, water } = arm(port, colour);
+    group.add(channel);
+    group.add(water);
+    waters.push(water);
   }
-  return { group, arms, core, body };
+  return { group, waters, core };
 }
 
 type Piece = {
   group: Group;
-  arms: FlatMesh[];
+  waters: FlatMesh[];
   core: Mesh | null;
-  body: FlatMesh | null;
   kind: Kind;
   shown: number;
   target: number;
@@ -137,6 +193,8 @@ export type Board = {
   extent: () => { width: number; height: number };
   /** The shape of the frustum, so the page can size the stage to match. */
   aspect: () => number;
+  groundHeight: () => number;
+  lift: () => number;
   dispose: () => void;
 };
 
@@ -146,8 +204,10 @@ export function createBoard(canvas: HTMLCanvasElement, grid: Grid): Board {
 
   // The frustum follows the board's own proportions, so a wide level fills a
   // wide stage instead of floating in a square one.
-  const spanX = (grid.width * CELL) / 2 + 0.3;
-  const spanY = (grid.height * CELL) / 2 + 0.3;
+  const spanX = (grid.width * CELL) / 2 + 0.35;
+  // The board foreshortens under the tilt, and modules stand up into the space
+  // that frees, so the vertical span follows the PROJECTED depth plus headroom.
+  const spanY = ((grid.height * CELL) / 2) * Math.cos(TILT) + 0.5;
   const camera = new OrthographicCamera(-spanX, spanX, spanY, -spanY, 0.1, 100);
 
   // Ochre is the sand, sandstone is the masonry of the channels, lapis is the
@@ -181,16 +241,15 @@ export function createBoard(canvas: HTMLCanvasElement, grid: Grid): Board {
       if (!cell) return;
       let piece = pieces.get(index);
       if (!piece) {
-        const { group, arms, core, body } = moduleGroup(cell.kind);
+        const { group, waters, core } = moduleGroup(cell.kind);
         const [x, z] = at(index);
         group.position.set(x * CELL, 0, z * CELL);
         group.rotation.y = angleFor(cell.rotation);
         modules.add(group);
         piece = {
           group,
-          arms,
+          waters,
           core,
-          body,
           kind: cell.kind,
           shown: angleFor(cell.rotation),
           target: angleFor(cell.rotation),
@@ -208,10 +267,10 @@ export function createBoard(canvas: HTMLCanvasElement, grid: Grid): Board {
     });
   }
 
-  let view: View = "plan";
+  let view: View = "play";
   let pulse = 0;
   let progress = 1;
-  let from = VIEWS.plan;
+  let from = VIEWS.play;
 
   function place(): void {
     const to = VIEWS[view];
@@ -233,17 +292,10 @@ export function createBoard(canvas: HTMLCanvasElement, grid: Grid): Board {
       // The grove never turns blue: colouring its arms buries the one green
       // thing on the board under the very water it is supposed to be
       // collecting. Its pool says the water arrived instead.
-      const wetted = running && piece.kind !== "sink";
-      for (const mesh of piece.arms) {
-        mesh.material.color.set(wetted ? LAPIS : piece.kind === "sink" ? GROVE : SANDSTONE);
-        // Colour is not the only signal: a running channel is visibly fuller
-        // than a dry one, so the route survives a colour-vision difference.
-        mesh.scale.set(wetted ? 1.28 : 1, wetted ? 1.15 : 1, 1);
-      }
-      if (piece.body) {
-        piece.body.material.color.set(wetted ? LAPIS : SANDSTONE);
-        piece.body.scale.set(wetted ? 1.28 : 1, wetted ? 1.15 : 1, wetted ? 1.28 : 1);
-      }
+      // The masonry never changes colour. Water simply appears in it, which is
+      // a difference of SHAPE as much as hue, so the live route survives a
+      // colour-vision difference.
+      for (const mesh of piece.waters) mesh.visible = running;
       if (piece.kind === "sink" && piece.core) {
         // The pool grows with what has been delivered. No number anywhere.
         const size = 0.1 + Math.min(1, filled) * 0.62;
@@ -262,10 +314,10 @@ export function createBoard(canvas: HTMLCanvasElement, grid: Grid): Board {
       const spread = (0.5 + Math.min(1, amount) * 0.34) * CELL;
       const depth = 0.3 * CELL;
       const blob = new Mesh(
-        new BoxGeometry(dx !== 0 ? depth : spread, 0.05, dx !== 0 ? spread : depth),
+        new BoxGeometry(dx !== 0 ? depth : spread, 0.07, dx !== 0 ? spread : depth),
         flat(LAPIS),
       );
-      blob.position.set((x + dx * 0.66) * CELL, -0.12, (z + dz * 0.66) * CELL);
+      blob.position.set((x + dx * 0.66) * CELL, 0.035, (z + dz * 0.66) * CELL);
       leaks.add(blob);
     }
   }
@@ -307,9 +359,18 @@ export function createBoard(canvas: HTMLCanvasElement, grid: Grid): Board {
     },
     extent: () => ({
       width: (grid.width * CELL) / (2 * spanX),
-      height: (grid.height * CELL) / (2 * spanY),
+      // Divided by cos(TILT) because the overlay is sized BEFORE it is tilted:
+      // rotateX shrinks it back to exactly the board's projected depth.
+      height: (grid.height * CELL) / (2 * spanY * Math.cos(TILT)),
     }),
     aspect: () => spanX / spanY,
+    /** Modules stand RAISE above the sand, so their tops project higher up the
+     *  screen than the ground squares they occupy. The overlay shifts by the
+     *  same amount or every button sits low of the thing it selects. */
+    lift: () => (RAISE * Math.sin(TILT)) / (2 * spanY),
+    /** Fraction of the canvas height the sand covers. The gauges match it, so
+     *  the three columns read as one object instead of three. */
+    groundHeight: () => ((grid.height * CELL + 0.3) * Math.cos(TILT)) / (2 * spanY),
     dispose: () => renderer.dispose(),
   };
 }

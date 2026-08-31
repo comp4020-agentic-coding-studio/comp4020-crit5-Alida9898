@@ -12,7 +12,7 @@ import { canAcceptInput, pour, rotate, settle, start } from "./game.ts";
 import { LEVELS } from "./levels.ts";
 import { PALETTE } from "./palette.ts";
 import type { Board } from "./scene.ts";
-import { createBoard } from "./scene.ts";
+import { TILT_DEG, createBoard } from "./scene.ts";
 
 /** One unit of water leaves the tank this often. The tank is the clock. */
 const POUR_MS = 520;
@@ -83,6 +83,11 @@ export function mount(el: Elements): () => void {
     el.cells.style.width = `${extent.width * 100}%`;
     el.cells.style.height = `${extent.height * 100}%`;
     el.cells.style.gridTemplateColumns = `repeat(${width}, 1fr)`;
+    // Lie the overlay down onto the board. Under an orthographic camera this
+    // reproduces the projection exactly, so a button covers the module it
+    // belongs to rather than approximately hovering near it.
+    const lift = (board?.lift() ?? 0) * el.stage.getBoundingClientRect().height;
+    el.cells.style.transform = `translateY(${-lift}px) rotateX(${TILT_DEG}deg)`;
 
     const buttons = state.grid.cells.map((cell, index) => {
       const button = document.createElement("button");
@@ -131,7 +136,7 @@ export function mount(el: Elements): () => void {
     const won = state.phase === "won";
     el.stage.classList.remove("running");
     el.stage.classList.add(won ? "won" : "lost");
-    board?.look("raised");
+    board?.look("result");
     pending = setTimeout(() => {
       el.stage.classList.remove("won", "lost");
       if (!won) return load(levelIndex);
@@ -145,7 +150,7 @@ export function mount(el: Elements): () => void {
     levelIndex = LEVELS.length;
     paintProgress();
     el.stage.classList.add("complete");
-    board?.look("raised");
+    board?.look("result");
   }
 
   function load(next: number): void {
@@ -165,11 +170,15 @@ export function mount(el: Elements): () => void {
     paintGauges();
     paintWater();
     paintProgress();
-    board.look("plan");
+    board.look("play");
   }
 
   function resize(): void {
-    if (board) el.stage.style.aspectRatio = String(board.aspect());
+    if (board) {
+      el.stage.style.aspectRatio = String(board.aspect());
+      const tall = board.groundHeight() * el.stage.getBoundingClientRect().height;
+      for (const gauge of [el.tank, el.grove]) gauge.style.height = `${tall}px`;
+    }
     const rect = el.stage.getBoundingClientRect();
     board?.resize(rect.width, rect.height);
   }

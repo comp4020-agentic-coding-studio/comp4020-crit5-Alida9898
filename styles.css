@@ -66,7 +66,7 @@ h1 {
 
 .field {
   display: flex;
-  align-items: stretch;
+  align-items: center;
   gap: clamp(0.5rem, 2vw, 1.5rem);
 }
 
@@ -74,6 +74,9 @@ h1 {
    tutorial is that one drops while the other does not. */
 .gauge {
   position: relative;
+
+  /* As tall as the sand, not as tall as the viewport. */
+  height: var(--gauge-h, 60%);
   width: clamp(1.1rem, 2.4vw, 1.9rem);
   overflow: hidden;
   border: 2px solid var(--lapis);
