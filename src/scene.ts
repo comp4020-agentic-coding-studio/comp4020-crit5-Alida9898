@@ -139,7 +139,11 @@ function colonnade(size: number, height: number): Group {
 
 /** 一段砖砌水渠:两道侧壁夹着一条水。水是独立的物体,不是把渠染蓝 —— 后者
  *  会让水淹掉砖,读起来就不再是「某个东西里面的水」。 */
-function channel(from: Vec3, to: Vec3): { group: Group; water: Mesh; half: Mesh } {
+function channel(
+  from: Vec3,
+  to: Vec3,
+  stepped = false,
+): { group: Group; water: Mesh; half: Mesh } {
   const g = new Group();
   const dx = to[0] - from[0];
   const dz = to[2] - from[2];
@@ -195,6 +199,33 @@ function channel(from: Vec3, to: Vec3): { group: Group; water: Mesh; half: Mesh 
   );
   half.visible = false;
   g.add(half);
+
+  // 阶梯渠:几级砌上去的台阶,末端悬在空中。台阶要有可见的踏面和竖板,
+  // 不能用斜面代替 —— 玩家得看出「这是一段路,只是够不着」。
+  if (stepped) {
+    for (let i = 0; i < 3; i++) {
+      const t = 0.24 + i * 0.26;
+      const rise = FORM.stepRise * (i + 1);
+      const tread = new Mesh(
+        new BoxGeometry(FORM.channelWidth + 0.12, 0.07, FORM.stepTread),
+        lambert(PALETTE.sandstone.light),
+      );
+      tread.rotation.y = angle;
+      tread.position.set(from[0] + dx * t, mid[1] + rise, from[2] + dz * t);
+      g.add(tread);
+      const riser = new Mesh(
+        new BoxGeometry(FORM.channelWidth + 0.12, rise, 0.06),
+        lambert(PALETTE.sandstone.dark),
+      );
+      riser.rotation.y = angle;
+      riser.position.set(
+        from[0] + dx * (t - 0.12),
+        mid[1] + rise / 2,
+        from[2] + dz * (t - 0.12),
+      );
+      g.add(riser);
+    }
+  }
 
   return { group: g, water, half };
 }
@@ -405,7 +436,10 @@ export function createStage(canvas: HTMLCanvasElement, level: Level, layout: Lay
   for (const c of level.channels) {
     const place = layout.ports[c.id];
     if (!place || !("from" in place)) continue;
-    const built = channel(place.from, place.to);
+    // 通向终点大池的那一段做成阶梯 —— 它是这一关唯一「够不着」的东西,
+    // 得一眼看出来是条路。
+    const leadsToFinal = c.ends.some((e) => level.pools.find((p) => p.id === e)?.isFinal);
+    const built = channel(place.from, place.to, leadsToFinal);
     waters.set(c.id, { full: built.water, half: built.half });
     mount(built.group, place);
     pieces.set(c.id, built.group);
