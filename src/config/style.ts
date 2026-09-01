@@ -78,7 +78,14 @@ export const FORM = {
   columnRadius: 0.09,
   /** 柱子长度是固定的,不跟着露台的世界高度走 —— 后者会让上层露台长出一根
    *  穿出画面的钉子。柱子的作用是「这块是架空的」,不是量高度。 */
-  pierLength: 1.15,
+  pierLength: 1.35,
+  /** 每块露台下面是一排柱廊,不是一根柱子。神庙感全在这里 —— 一根柱子读作
+   *  「支架」,一排柱子才读作「建筑」。 */
+  colonnade: 3,
+  /** 顶面的砖缝条数。砖砌质感由几何做出来,没有贴图。 */
+  brickLines: 3,
+  /** 蓝釉镶边的宽度,沿露台顶面四周走一圈。 */
+  glazeBand: 0.08,
   /** Channels: a masonry trough with water sitting inside it. */
   channelWidth: 0.38,
   channelWall: 0.09,

@@ -21,6 +21,7 @@ import {
 } from "three";
 import { ACESFilmicToneMapping } from "three";
 import { BACKGROUND, CAMERA, FORM, LIGHT, PALETTE, RENDER } from "./config/style.ts";
+import type { Azimuth } from "./config/style.ts";
 import type { Layout, Placement, Vec3 } from "./iso.ts";
 import { project, turnedAround } from "./iso.ts";
 import type { Level, PartId, PortId, Turn } from "./rules.ts";
@@ -31,8 +32,8 @@ const D = 60;
 const lambert = (colour: string): MeshLambertMaterial =>
   new MeshLambertMaterial({ color: colour });
 
-/** 一块露台:主体、顶面薄板(亮一档)、檐口(略宽,暗一档)。
- *  单个 box 在固定光下会读成一张纸,规格明令不许。 */
+/** 一块露台:主体、顶面薄板(亮一档)、檐口(略宽,暗一档),
+ *  再加上砖缝和一圈蓝釉镶边。单个 box 在固定光下会读成一张纸,规格明令不许。 */
 function terrace(size: number, hue: keyof typeof PALETTE = "sandstone"): Group {
   const g = new Group();
   const tone = PALETTE[hue];
@@ -40,12 +41,51 @@ function terrace(size: number, hue: keyof typeof PALETTE = "sandstone"): Group {
   const body = new Mesh(new BoxGeometry(size, FORM.terraceBody, size), lambert(tone.mid));
   g.add(body);
 
+  const top = FORM.terraceBody / 2;
   const slab = new Mesh(
     new BoxGeometry(size * 0.94, FORM.terraceSlab, size * 0.94),
     lambert(tone.light),
   );
-  slab.position.y = FORM.terraceBody / 2 + FORM.terraceSlab / 2;
+  slab.position.y = top + FORM.terraceSlab / 2;
   g.add(slab);
+
+  // 砖缝:顶面上几道暗一档的细线,两个方向各来一组。砖砌质感由几何做出来,
+  // 没有贴图 —— 规格禁止贴图文件。
+  const seamY = top + FORM.terraceSlab + 0.001;
+  for (let i = 1; i <= FORM.brickLines; i++) {
+    const t = (i / (FORM.brickLines + 1) - 0.5) * size * 0.94;
+    for (const along of [true, false]) {
+      const seam = new Mesh(
+        new BoxGeometry(along ? size * 0.94 : 0.022, 0.006, along ? 0.022 : size * 0.94),
+        lambert(tone.dark),
+      );
+      seam.position.set(along ? 0 : t, seamY, along ? t : 0);
+      g.add(seam);
+    }
+  }
+
+  // 伊什塔尔门的钴蓝釉:沿顶面四周镶一圈。建筑上唯一的蓝,和水同色不是巧合。
+  for (const [ox, oz] of [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ]) {
+    const band = new Mesh(
+      new BoxGeometry(
+        ox !== 0 ? FORM.glazeBand : size * 0.94,
+        0.02,
+        ox !== 0 ? size * 0.94 : FORM.glazeBand,
+      ),
+      lambert(PALETTE.lapis.mid),
+    );
+    band.position.set(
+      (ox * (size * 0.94 - FORM.glazeBand)) / 2,
+      top + FORM.terraceSlab + 0.002,
+      (oz * (size * 0.94 - FORM.glazeBand)) / 2,
+    );
+    g.add(band);
+  }
 
   const cornice = new Mesh(
     new BoxGeometry(size + FORM.corniceOverhang, FORM.corniceHeight, size + FORM.corniceOverhang),
@@ -57,18 +97,42 @@ function terrace(size: number, hue: keyof typeof PALETTE = "sandstone"): Group {
   return g;
 }
 
-/** 分段柱子,不是一根等宽圆柱。 */
-function column(height: number): Group {
+/** 一根分段柱子,不是一根等宽圆柱。 */
+function drum(height: number): Group {
   const g = new Group();
   const each = height / FORM.columnSegments;
   for (let i = 0; i < FORM.columnSegments; i++) {
-    const r = FORM.columnRadius * (1 - i * 0.08);
-    const drum = new Mesh(
-      new CylinderGeometry(r, r * 1.06, each * 0.92, 8),
+    const r = FORM.columnRadius * (1 - i * 0.07);
+    const seg = new Mesh(
+      new CylinderGeometry(r, r * 1.07, each * 0.9, 8),
       lambert(i % 2 === 0 ? PALETTE.sandstone.mid : PALETTE.sandstone.dark),
     );
-    drum.position.y = -each * (i + 0.5);
-    g.add(drum);
+    seg.position.y = -each * (i + 0.5);
+    g.add(seg);
+  }
+  // 柱头:一块略宽的方石,把柱子和露台底面接起来。
+  const capital = new Mesh(
+    new BoxGeometry(FORM.columnRadius * 2.9, 0.09, FORM.columnRadius * 2.9),
+    lambert(PALETTE.sandstone.light),
+  );
+  capital.position.y = -0.03;
+  g.add(capital);
+  return g;
+}
+
+/** 一排柱廊撑起一块露台。一根柱子读作「支架」,一排柱子才读作「建筑」。 */
+function colonnade(size: number, height: number): Group {
+  const g = new Group();
+  const n = FORM.colonnade;
+  const step = (size * 0.78) / (n - 1);
+  for (let i = 0; i < n; i++) {
+    for (let j = 0; j < n; j++) {
+      // 只排周边一圈 —— 中间的柱子谁也看不见,白白拖慢。
+      if (i > 0 && i < n - 1 && j > 0 && j < n - 1) continue;
+      const c = drum(height);
+      c.position.set(-size * 0.39 + i * step, 0, -size * 0.39 + j * step);
+      g.add(c);
+    }
   }
   return g;
 }
@@ -89,7 +153,7 @@ function channel(from: Vec3, to: Vec3): { group: Group; water: Mesh; half: Mesh 
   // 「这里本来能过」—— 这个形状替代了文字教程。
   const floor = new Mesh(
     new BoxGeometry(FORM.channelWidth, FORM.channelWall * 0.7, span),
-    lambert(PALETTE.sandstone.dark),
+    lambert(PALETTE.lapis.dark),
   );
   floor.rotation.y = angle;
   floor.position.set(mid[0], mid[1] - FORM.channelWall * 0.5, mid[2]);
@@ -140,6 +204,10 @@ export type Stage = {
   step: (dt: number) => void;
   /** 把砖块摆到某个配置。转动是动画,期间外部应当封锁输入。 */
   setTurns: (turns: Record<PartId, Turn>) => void;
+  /** 把相机转到某个枚举角度。同样是动画,期间不得做任何连通判定。 */
+  setCamera: (azimuth: Azimuth) => void;
+  /** 相机是不是正在转。转的过程中每一帧都在穿帮,不能拿来判定或拾取。 */
+  turning: () => boolean;
   /** 哪些渠灌满了、哪些半满、哪些池子有水。 */
   setWater: (filled: Set<PortId>, half: PortId[], wet: Set<PortId>) => void;
   setBeast: (port: PortId) => void;
@@ -166,17 +234,45 @@ export function createStage(canvas: HTMLCanvasElement, level: Level, layout: Lay
   const world = new Group();
   scene.add(world);
 
+  // 把建筑的几何中心挪到原点。相机是绕原点转的,建筑要是偏在一边,转四分之一
+  // 圈就甩出画外 —— 而这不是取景没框够,是转轴不对。
+  {
+    let sx = 0;
+    let sy = 0;
+    let sz = 0;
+    let n = 0;
+    for (const place of Object.values(layout.ports)) {
+      const raw: Vec3[] = "at" in place ? [place.at] : [place.from, place.to];
+      for (const p of raw) {
+        sx += p[0];
+        sy += p[1];
+        sz += p[2];
+        n++;
+      }
+    }
+    if (n > 0) world.position.set(-sx / n, -sy / n, -sz / n);
+  }
+
   // 取景:把所有 port 在所有配置下的投影都框进来,免得转到某一档就跑出画外。
   let minX = Infinity;
   let maxX = -Infinity;
   let minY = Infinity;
   let maxY = -Infinity;
-  const note = (p: Vec3): void => {
-    const [x, y] = project(p, level.opens.camera);
-    minX = Math.min(minX, x);
-    maxX = Math.max(maxX, x);
-    minY = Math.min(minY, y);
-    maxY = Math.max(maxY, y);
+  // 相机会转,所以取景要把**每一个角度**下的投影都框进去 —— 只按开局角度框,
+  // 转过去就有东西跑出画外。
+  const note = (raw0: Vec3): void => {
+    const p: Vec3 = [
+      raw0[0] + world.position.x,
+      raw0[1] + world.position.y,
+      raw0[2] + world.position.z,
+    ];
+    for (const az of CAMERA.azimuthsDeg) {
+      const [x, y] = project(p, az);
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y);
+      maxY = Math.max(maxY, y);
+    }
   };
   for (const place of Object.values(layout.ports)) {
     const raw: Vec3[] = "at" in place ? [place.at] : [place.from, place.to];
@@ -199,16 +295,20 @@ export function createStage(canvas: HTMLCanvasElement, level: Level, layout: Lay
     0.1,
     400,
   );
-  {
-    const az = (level.opens.camera * Math.PI) / 180;
+  let azWant = level.opens.camera as number;
+  let azShown = azWant;
+
+  function placeCamera(): void {
+    const az = (azShown * Math.PI) / 180;
     const pitch = (CAMERA.pitchDeg * Math.PI) / 180;
     camera.position.set(
       D * Math.cos(pitch) * Math.cos(az),
       D * Math.sin(pitch),
       D * Math.cos(pitch) * Math.sin(az),
     );
+    camera.lookAt(0, 0, 0);
   }
-  camera.lookAt(0, 0, 0);
+  placeCamera();
   camera.updateProjectionMatrix();
 
   // ——— 建 ———
@@ -247,7 +347,7 @@ export function createStage(canvas: HTMLCanvasElement, level: Level, layout: Lay
     const g = terrace(FORM.terraceSize * (platform.id === "ground" ? 2.4 : 1));
     g.position.set(...place.at);
     if (platform.id !== "ground") {
-      const legs = column(FORM.pierLength);
+      const legs = colonnade(FORM.terraceSize, FORM.pierLength);
       legs.position.set(place.at[0], place.at[1] - FORM.terraceBody / 2, place.at[2]);
       world.add(legs);
     }
@@ -281,17 +381,21 @@ export function createStage(canvas: HTMLCanvasElement, level: Level, layout: Lay
         g.add(post);
       }
     }
-    // 池子里的水面。泉眼一直有水;终点大池开局是空的。
-    const w = new Mesh(
-      new BoxGeometry(FORM.terraceSize * scale * 0.62, 0.16, FORM.terraceSize * scale * 0.62),
-      lambert(PALETTE.lapis.mid),
+    // 圆池,深蓝釉边框着水面 —— 参考图里池子都是圆的,方池读起来像地砖。
+    const r = FORM.terraceSize * scale * 0.33;
+    const rim = new Mesh(
+      new CylinderGeometry(r * 1.16, r * 1.16, 0.1, 24),
+      lambert(PALETTE.lapis.dark),
     );
-    w.position.y = FORM.terraceBody / 2 + 0.02;
+    rim.position.y = FORM.terraceBody / 2 + FORM.terraceSlab + 0.01;
+    g.add(rim);
+    const w = new Mesh(new CylinderGeometry(r, r, 0.12, 24), lambert(PALETTE.lapis.mid));
+    w.position.y = FORM.terraceBody / 2 + FORM.terraceSlab + 0.03;
     w.visible = !pool.isFinal;
     g.add(w);
     poolWater.set(pool.id, w);
     g.position.set(...place.at);
-    const legs = column(FORM.pierLength);
+    const legs = colonnade(FORM.terraceSize * scale, FORM.pierLength);
     legs.position.set(place.at[0], place.at[1] - FORM.terraceBody / 2, place.at[2]);
     world.add(legs);
     mount(g, place);
@@ -363,6 +467,17 @@ export function createStage(canvas: HTMLCanvasElement, level: Level, layout: Lay
   return {
     render: () => renderer.render(scene, camera),
     step: (dt) => {
+      if (Math.abs(azShown - azWant) > 0.01) {
+        // 走最短的一边转过去。中间的每一个角度都必然穿帮 —— 那正是这段动画
+        // 存在的意义:把穿帮藏进去。
+        let delta = azWant - azShown;
+        while (delta > 180) delta -= 360;
+        while (delta < -180) delta += 360;
+        const k = Math.min(1, (dt * 1000) / (CAMERA.turnMs * 0.4));
+        azShown += delta * k;
+        if (Math.abs(azWant - azShown) < 0.05) azShown = azWant;
+        placeCamera();
+      }
       for (const t of turning) {
         if (Math.abs(t.shown - t.target) < 1e-4) {
           t.shown = t.target;
@@ -373,6 +488,10 @@ export function createStage(canvas: HTMLCanvasElement, level: Level, layout: Lay
       }
     },
     setTurns,
+    setCamera: (az) => {
+      azWant = az;
+    },
+    turning: () => Math.abs(azShown - azWant) > 0.01,
     setWater,
     setBeast,
     toScreen: (port) => {
@@ -390,8 +509,14 @@ export function createStage(canvas: HTMLCanvasElement, level: Level, layout: Lay
         : raw;
       let sx = 0;
       let sy = 0;
-      for (const p of pts) {
-        const [x, y] = project(p, level.opens.camera);
+      const az = (((Math.round(azShown / 90) * 90) % 360) + 360) % 360 as Azimuth;
+      for (const p0 of pts) {
+        const p: Vec3 = [
+          p0[0] + world.position.x,
+          p0[1] + world.position.y,
+          p0[2] + world.position.z,
+        ];
+        const [x, y] = project(p, az);
         sx += x / pts.length;
         sy += y / pts.length;
       }

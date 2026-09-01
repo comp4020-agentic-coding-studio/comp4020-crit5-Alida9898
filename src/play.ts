@@ -17,6 +17,7 @@ import {
   reachable,
   standingOnPool,
   turn,
+  turnCamera,
   walkableFrom,
 } from "./rules.ts";
 import type { Stage } from "./scene.ts";
@@ -48,6 +49,26 @@ export function mount(el: Elements): () => void {
     paintWater();
     el.stage.classList.toggle("flowered", finalPoolFull(level, state));
     el.stage.classList.toggle("attap", standingOnPool(level, state) !== null);
+  }
+
+  /**
+   * 转相机。建筑一动不动,动的是看它的方向 —— 而「屏幕上看起来接着就是接着」,
+   * 所以这一下会改变哪些东西连得上。
+   *
+   * 动画期间封锁输入,并且**把按钮全撤掉**:中间的每一个角度都在穿帮,
+   * 那时候的拾取位置和连通判定都是没有意义的。
+   */
+  function swing(): void {
+    if (locked) return;
+    locked = true;
+    state = turnCamera(state, CAMERA.azimuthsDeg);
+    stage?.setCamera(state.config.camera);
+    el.handles.replaceChildren();
+    timer = setTimeout(() => {
+      locked = false;
+      resolve();
+      placeHandles();
+    }, CAMERA.turnMs);
   }
 
   /** 空格:从兽脚下的池子放水。不站在池子上就什么也不发生。 */
@@ -145,6 +166,13 @@ export function mount(el: Elements): () => void {
     stage?.resize(r.width, r.height);
     placeHandles();
   }
+
+  // 点在建筑以外的地方 = 转相机。第一关兽只有两三个落点,其余画面全是「转」,
+  // 所以玩家一下就撞上这个动作。
+  el.stage.addEventListener("click", (e) => {
+    if ((e.target as HTMLElement).closest("button")) return;
+    swing();
+  });
 
   // 空格引水。规格里唯一用到键盘的地方。
   const onKey = (e: KeyboardEvent): void => {

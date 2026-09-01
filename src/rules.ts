@@ -74,6 +74,14 @@ export function begin(level: Level): State {
   };
 }
 
+/** 转相机:切到枚举里的下一个方位角。建筑一动不动,动的是看它的方向 ——
+ *  而「看起来接上了就是接上了」,所以这一下会改变连通。 */
+export function turnCamera(state: State, azimuths: readonly Azimuth[]): State {
+  const i = azimuths.indexOf(state.config.camera);
+  const next = azimuths[(i + 1) % azimuths.length];
+  return { ...state, config: { ...state.config, camera: next } };
+}
+
 /** 一次转动:某块砖前进一档。旋转是枚举,不是角度。 */
 export function turn(state: State, part: PartId): State {
   const now = state.config.turns[part] ?? 0;
