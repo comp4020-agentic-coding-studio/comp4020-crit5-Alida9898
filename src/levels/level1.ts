@@ -19,10 +19,7 @@ export const level1: Level = {
 
   channels: [{ id: "aqueduct", ends: ["sourcePool", "finalPool"] }],
 
-  platforms: [
-    { id: "ground" },      // 视觉基座,不参与任何判定
-    { id: "sourceLedge" }, // 兽站的台子
-  ],
+  platforms: [{ id: "sourceLedge" }], // 兽站的台子
 
   tapPoints: [{ id: "tap1", on: "sourceLedge" }],
 
@@ -53,14 +50,15 @@ export const level1: Level = {
 export const level1Layout: Layout = {
   pivots: {
     // 渠的下游口就是轴心 —— 转动时它待在原地,只有上游口划过去。
-    spur: [3, 1, 3],
+    spur: [2, 1, 2],
   },
   ports: {
-    ground: { at: [0, -0.6, 0] },
     sourcePool: { at: [0, 0, 0] },
-    sourceLedge: { at: [1.5, 0, -0.5] },
-    tap1: { at: [1.5, 0, -0.5] },
-    aqueduct: { from: [1, 1, 1], to: [3, 1, 3], part: "spur" },
-    finalPool: { at: [4, 2, 4] },
+    sourceLedge: { at: [1.6, 0, -0.6] },
+    tap1: { at: [1.6, 0, -0.6] },
+    // 上游口 (1,1,1) 与源池 (0,0,0) 差一个隐身方向 —— 同一个像素,差一层楼。
+    // 下游口 (2,1,2) 与终点池 (3,2,3) 也是。水看着平平地流,其实爬了两层。
+    aqueduct: { from: [1, 1, 1], to: [2, 1, 2], part: "spur" },
+    finalPool: { at: [3, 2, 3] },
   },
 };

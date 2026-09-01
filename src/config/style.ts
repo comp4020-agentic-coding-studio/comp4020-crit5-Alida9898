@@ -76,8 +76,11 @@ export const FORM = {
   /** Columns are segmented rather than one tube of constant width. */
   columnSegments: 3,
   columnRadius: 0.09,
+  /** 柱子长度是固定的,不跟着露台的世界高度走 —— 后者会让上层露台长出一根
+   *  穿出画面的钉子。柱子的作用是「这块是架空的」,不是量高度。 */
+  pierLength: 1.15,
   /** Channels: a masonry trough with water sitting inside it. */
-  channelWidth: 0.3,
+  channelWidth: 0.38,
   channelWall: 0.09,
   waterInset: 0.06,
 } as const;
