@@ -9,15 +9,32 @@
 
 import { CAMERA } from "./config/style.ts";
 import type { Azimuth } from "./config/style.ts";
-import type { PortId } from "./rules.ts";
+import type { PartId, PortId, Turn } from "./rules.ts";
 
 export type Vec3 = [number, number, number];
 
-/** 一个 port 在世界里的位置。渠是一段,所以有两端。 */
-export type Placement = { at: Vec3 } | { from: Vec3; to: Vec3 };
+/** 一个 port 在世界里的位置。渠是一段,所以有两端。
+ *  `part` 说明它骑在哪块可转的砖上;不写就是钉死在塔上。 */
+export type Placement =
+  | { at: Vec3; part?: PartId }
+  | { from: Vec3; to: Vec3; part?: PartId };
 
-/** 一关里每个 port 摆在哪。和拓扑分开放,`rules.ts` 因此完全不认识坐标。 */
-export type Layout = Record<PortId, Placement>;
+/** 一关里每个 port 摆在哪,以及每块砖绕哪根轴转。
+ *  和拓扑分开放,`rules.ts` 因此完全不认识坐标。 */
+export type Layout = {
+  ports: Record<PortId, Placement>;
+  pivots: Record<PartId, Vec3>;
+};
+
+/** 绕一根竖直轴转四分之一圈。 */
+export function turnedAround(p: Vec3, pivot: Vec3, at: Turn): Vec3 {
+  const dx = p[0] - pivot[0];
+  const dz = p[2] - pivot[2];
+  const angle = (-at * Math.PI) / 2;
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  return [pivot[0] + dx * cos + dz * sin, p[1], pivot[2] - dx * sin + dz * cos];
+}
 
 const RAD = Math.PI / 180;
 
@@ -48,9 +65,19 @@ export function eye(azimuthDeg: Azimuth): Vec3 {
   ];
 }
 
-/** 一个 port 用来判断对齐的那个点。渠取两端各算一次,见 `endsOf`。 */
-export function anchorsOf(place: Placement): Vec3[] {
-  return "at" in place ? [place.at] : [place.from, place.to];
+/** 一个 port 用来判断对齐的点,已经把它所在砖块的转动算进去了。
+ *  渠有两端,所以返回两个。 */
+export function anchorsOf(
+  place: Placement,
+  layout?: Layout,
+  turns?: Record<PartId, Turn>,
+): Vec3[] {
+  const raw: Vec3[] = "at" in place ? [place.at] : [place.from, place.to];
+  const part = place.part;
+  if (!part || !layout || !turns) return raw;
+  const pivot = layout.pivots[part];
+  if (!pivot) return raw;
+  return raw.map((p) => turnedAround(p, pivot, turns[part] ?? 0));
 }
 
 /**
@@ -64,10 +91,12 @@ export function looksJoined(
   a: Placement,
   b: Placement,
   azimuthDeg: Azimuth,
+  layout?: Layout,
+  turns?: Record<PartId, Turn>,
   tolerance = 0.35,
 ): boolean {
-  for (const pa of anchorsOf(a)) {
-    for (const pb of anchorsOf(b)) {
+  for (const pa of anchorsOf(a, layout, turns)) {
+    for (const pb of anchorsOf(b, layout, turns)) {
       const [ax, ay] = project(pa, azimuthDeg);
       const [bx, by] = project(pb, azimuthDeg);
       if (Math.hypot(ax - bx, ay - by) <= tolerance) return true;

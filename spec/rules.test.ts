@@ -2,9 +2,10 @@ import { describe, expect, it } from "vitest";
 import { CAMERA } from "../src/config/style.ts";
 import type { Azimuth } from "../src/config/style.ts";
 import { level1 } from "../src/levels/level1.ts";
-import type { Level, PortId, State } from "../src/rules.ts";
+import type { Level, PortId, State, Turn } from "../src/rules.ts";
 import {
   begin,
+  turn as turnPart,
   canWalkTo,
   fillingNow,
   finalPoolFull,
@@ -23,18 +24,13 @@ import {
 
 const LEVELS: Level[] = [level1];
 
-describe("rule 1: what looks joined is joined, per angle", () => {
-  it("declares links for every camera angle the game can show", () => {
-    for (const level of LEVELS) {
-      for (const angle of CAMERA.azimuthsDeg) {
-        expect(
-          level.cameraAngles[angle],
-          `${level.name} has nothing declared at ${angle}°`,
-        ).toBeTruthy();
-      }
-    }
-  });
+/** level 1 with its one turnable brick set to a given quarter. */
+const at = (spur: Turn): State => {
+  const s = begin(level1);
+  return { ...s, config: { ...s.config, turns: { spur } } };
+};
 
+describe("rule 1: what looks joined is joined, per configuration", () => {
   it("names only ports that exist", () => {
     for (const level of LEVELS) {
       const known = new Set<PortId>([
@@ -43,10 +39,20 @@ describe("rule 1: what looks joined is joined, per angle", () => {
         ...level.platforms.map((p) => p.id),
         ...level.tapPoints.map((t) => t.id),
       ]);
-      for (const [angle, links] of Object.entries(level.cameraAngles)) {
-        for (const [a, b] of [...links.waterLinks, ...links.walkLinks]) {
-          expect(known, `${level.name} @${angle}° names ${a}`).toContain(a);
-          expect(known, `${level.name} @${angle}° names ${b}`).toContain(b);
+      for (const link of [...level.waterLinks, ...level.walkLinks]) {
+        for (const port of link.between) {
+          expect(known, `${level.name} names ${port}`).toContain(port);
+        }
+      }
+    }
+  });
+
+  it("conditions every link on parts the level actually has", () => {
+    for (const level of LEVELS) {
+      const parts = new Set(level.parts);
+      for (const link of [...level.waterLinks, ...level.walkLinks]) {
+        for (const part of Object.keys(link.when.turns ?? {})) {
+          expect(parts, `${level.name}: no such part ${part}`).toContain(part);
         }
       }
     }
@@ -75,11 +81,9 @@ describe("rule 1: what looks joined is joined, per angle", () => {
 });
 
 describe("rule 2 and 4: a channel fills only when BOTH ends are anchored", () => {
-  const at = (angle: Azimuth): State => ({ ...begin(level1), angle });
-
-  it("does nothing at the opening angle", () => {
-    expect(fillingNow(level1, at(45))).toEqual([]);
-    expect(halfFilled(level1, at(45))).toEqual([]);
+  it("does nothing in the opening configuration", () => {
+    expect(fillingNow(level1, at(3))).toEqual([]);
+    expect(halfFilled(level1, at(3))).toEqual([]);
   });
 
   it("stops water in mid-channel when only one end is anchored", () => {
@@ -97,54 +101,48 @@ describe("rule 2 and 4: a channel fills only when BOTH ends are anchored", () =>
       channels: [{ id: "run", ends: ["src", "dst"] }],
       platforms: [],
       tapPoints: [],
-      cameraAngles: {
-        45: { waterLinks: [["src", "run"]], walkLinks: [] },
-        135: { waterLinks: [], walkLinks: [] },
-        225: {
-          waterLinks: [
-            ["src", "run"],
-            ["run", "dst"],
-          ],
-          walkLinks: [],
-        },
-        315: { waterLinks: [], walkLinks: [] },
-      },
-      opensAt: 45,
+      parts: ["gate"],
+      waterLinks: [
+        { between: ["src", "run"], when: {} },
+        { between: ["run", "dst"], when: { turns: { gate: 0 } } },
+      ],
+      walkLinks: [],
+      opens: { camera: 45, turns: { gate: 1 } },
     };
-    const stalled = begin(dangling);
+    const stalled = begin(dangling);  // gate at 1 → downstream end unanchored
     expect(fillingNow(dangling, stalled)).toEqual([]);
     expect(halfFilled(dangling, stalled)).toEqual(["run"]);
     // And it is not walkable while it hangs there — rule 4.
     expect(settle(dangling, stalled).filled.size).toBe(0);
   });
 
-  it("does nothing at the angles level 1 leaves dead", () => {
-    for (const angle of [135, 315] as Azimuth[]) {
-      expect(fillingNow(level1, at(angle))).toEqual([]);
-      expect(halfFilled(level1, at(angle))).toEqual([]);
+  it("does nothing at the turns level 1 leaves dead", () => {
+    for (const spur of [1, 2, 3] as Turn[]) {
+      expect(fillingNow(level1, at(spur))).toEqual([]);
+      expect(halfFilled(level1, at(spur))).toEqual([]);
     }
   });
 
   it("fills when both ends are anchored", () => {
-    expect(fillingNow(level1, at(225))).toEqual(["aqueduct"]);
-    expect(halfFilled(level1, at(225))).toEqual([]);
+    expect(fillingNow(level1, at(0))).toEqual(["aqueduct"]);
+    expect(halfFilled(level1, at(0))).toEqual([]);
   });
 });
 
 describe("rule 4: filling is irreversible", () => {
   it("keeps a filled channel filled after the camera turns away", () => {
-    let state = settle(level1, { ...begin(level1), angle: 225 });
+    let state = settle(level1, at(0));
     expect(state.filled.has("aqueduct")).toBe(true);
-    // Turn to an angle where nothing is joined at all.
-    state = settle(level1, { ...state, angle: 45 });
+    // Turn the spur to where nothing is joined at all.
+    state = settle(level1, { ...state, config: { camera: 45, turns: { spur: 2 } } });
     expect(state.filled.has("aqueduct"), "a filled channel drained").toBe(true);
   });
 
   it("never removes a channel from the filled set", () => {
-    let state = settle(level1, { ...begin(level1), angle: 225 });
+    let state = settle(level1, at(0));
     const size = state.filled.size;
-    for (const angle of CAMERA.azimuthsDeg) {
-      state = settle(level1, { ...state, angle });
+    for (const spur of [0, 1, 2, 3] as Turn[]) {
+      state = settle(level1, { ...state, config: { camera: 45, turns: { spur } } });
       expect(state.filled.size).toBeGreaterThanOrEqual(size);
     }
   });
@@ -162,24 +160,18 @@ describe("rule 5: full and connected are different states", () => {
     channels: [{ id: "span", ends: ["src", "dst"] }],
     platforms: [{ id: "near" }, { id: "far" }],
     tapPoints: [],
-    cameraAngles: {
-      45: {
-        waterLinks: [
-          ["src", "span"],
-          ["span", "dst"],
-        ],
-        walkLinks: [
-          ["near", "span"],
-          ["span", "far"],
-        ],
-      },
-      // Same building, turned. The span is full, and looks broken from here.
-      135: { waterLinks: [], walkLinks: [] },
-      225: { waterLinks: [], walkLinks: [] },
-      315: { waterLinks: [], walkLinks: [] },
-    },
+    parts: ["deck"],
+    waterLinks: [
+      { between: ["src", "span"], when: {} },
+      { between: ["span", "dst"], when: {} },
+    ],
+    walkLinks: [
+      // The span only LOOKS joined to both banks while the deck is square on.
+      { between: ["near", "span"], when: { turns: { deck: 0 } } },
+      { between: ["span", "far"], when: { turns: { deck: 0 } } },
+    ],
     beastAt: "near",
-    opensAt: 45,
+    opens: { camera: 45, turns: { deck: 0 } },
   };
 
   it("refuses to walk a channel that has not filled yet", () => {
@@ -200,9 +192,9 @@ describe("rule 5: full and connected are different states", () => {
     // into one flag is the tempting simplification, and it would delete the
     // game.
     const full = settle(bridge, begin(bridge));
-    const turned = { ...full, angle: 135 as Azimuth };
-    expect(turned.filled.has("span"), "it should still be full").toBe(true);
-    expect(canWalkTo(bridge, turned, "far"), "but not walkable from here").toBe(false);
+    const swung: State = { ...full, config: { camera: 45, turns: { deck: 1 } } };
+    expect(swung.filled.has("span"), "it should still be full").toBe(true);
+    expect(canWalkTo(bridge, swung, "far"), "but not walkable from here").toBe(false);
   });
 });
 
@@ -216,20 +208,14 @@ describe("rule 3: water runs only while the beast stands on a tap", () => {
     channels: [{ id: "run", ends: ["src", "dst"] }],
     platforms: [{ id: "ledge" }],
     tapPoints: [{ id: "tap", on: "ledge" }],
-    cameraAngles: {
-      45: {
-        waterLinks: [
-          ["src", "run"],
-          ["run", "dst"],
-        ],
-        walkLinks: [["ledge", "tap"]],
-      },
-      135: { waterLinks: [], walkLinks: [] },
-      225: { waterLinks: [], walkLinks: [] },
-      315: { waterLinks: [], walkLinks: [] },
-    },
+    parts: [],
+    waterLinks: [
+      { between: ["src", "run"], when: {} },
+      { between: ["run", "dst"], when: {} },
+    ],
+    walkLinks: [{ between: ["ledge", "tap"], when: {} }],
     beastAt: "ledge",
-    opensAt: 45,
+    opens: { camera: 45, turns: {} },
   };
 
   it("does not run while the beast is off the tap", () => {
@@ -264,15 +250,15 @@ describe("the level is won when the final pool is FULL", () => {
     }
   });
 
-  it("is solvable by turning the camera alone", () => {
+  it("is solvable by turning the bricks alone", () => {
     for (const level of LEVELS) {
       let state = begin(level);
       let won = false;
-      // Walk the whole enumeration a couple of times round; filling is
-      // irreversible, so progress accumulates.
-      for (let pass = 0; pass < 2 && !won; pass++) {
-        for (const angle of CAMERA.azimuthsDeg) {
-          state = settle(level, { ...state, angle });
+      // Cycle every part through its four turns; filling is irreversible, so
+      // progress accumulates across the sweep.
+      for (const part of level.parts) {
+        for (let i = 0; i < 4 && !won; i++) {
+          state = settle(level, turnPart(state, part));
           if (finalPoolFull(level, state)) won = true;
         }
       }
@@ -280,9 +266,8 @@ describe("the level is won when the final pool is FULL", () => {
     }
   });
 
-  it("is not won merely by water arriving", () => {
-    // The decoy angle reaches the channel but fills nothing.
-    const state = settle(level1, { ...begin(level1), angle: 135 });
+  it("is not won while the spur is turned away", () => {
+    const state = settle(level1, at(2));
     expect(finalPoolFull(level1, state)).toBe(false);
   });
 });

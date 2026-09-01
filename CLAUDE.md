@@ -230,8 +230,12 @@ down and wired to a check beats a constraint remembered.
 
 连通性来自手写的表,不来自几何计算:
 
-- 相机角度是**有限枚举**,不是连续值。
-- 每个相机角度对应一份**手写的连通声明**,列出该角度下哪些端口看起来相连。
+- **当前版本:相机固定在一个角度,玩家转的是砖块。** 规格原本写的是转相机,
+  那条留在下面没删 —— 数据结构两者通吃,见 `when`。改回去只需给声明多填一项,
+  规则和传感器都不动。
+- 一次「配置」= 相机角度 + 每块砖转到第几档。**都是有限枚举**,不是连续值。
+- 每条连通声明带一个 `when`,写明它在哪个配置下成立;省略的项表示「不关心」。
+  这样避免了「每种组合手写一整份表」的组合爆炸,而每一条仍然是手写的。
 - 运行时只查表。
 - **禁止**射线检测(Raycaster)、屏幕空间投影、包围盒重叠检测,或任何用几何
   运算推导「两个东西看起来是否对齐」的做法。
@@ -243,17 +247,22 @@ down and wired to a check beats a constraint remembered.
 
 ```ts
 type PortId = string;   // 池子、渠端、平台边缘等一切可连接点的名字
+type PartId = string;   // 可转的砖块
+type Turn = 0 | 1 | 2 | 3;
+
+/** 一条声明在什么配置下成立。省略 = 不关心。 */
+type When = { camera?: Azimuth; turns?: Partial<Record<PartId, Turn>> };
+type Link = { between: [PortId, PortId]; when: When };
 
 interface Level {
   pools: { id: PortId; isSource?: boolean; isFinal?: boolean }[];
   channels: { id: PortId; ends: [PortId, PortId] }[];   // ends 指向两个池子
   platforms: { id: PortId }[];
   tapPoints: { id: PortId; on: PortId }[];              // 取水点,及其所在平台
+  parts: PartId[];                                      // 可转的砖块
 
-  cameraAngles: Record<number, {
-    waterLinks: [PortId, PortId][];   // 该角度下水路看起来连通的端口对
-    walkLinks: [PortId, PortId][];    // 该角度下可行走面看起来连通的端口对
-  }>;
+  waterLinks: Link[];   // 看起来水路相连
+  walkLinks: Link[];    // 看起来可以走过去
 }
 ```
 
@@ -267,12 +276,16 @@ interface Level {
 
 - Three.js,相机必须是 `OrthographicCamera`。**禁止 `PerspectiveCamera`。**
   透视会让远处的边永远无法精确对齐,视错觉的前提就是屏幕上两条边像素级重合。
-- **禁止 `OrbitControls` 或任何自由轨道相机。** 玩家只能在预设角度之间切换。
-- 相机旋转是**本作的核心机制**,不是辅助功能。
-- 角度切换 = 播放一段固定的过渡动画,落到下一个枚举角度。
+- **禁止 `OrbitControls` 或任何自由轨道相机。**
+- **当前版本相机固定;转的是砖块。** 下面这两条对砖块一字不差地适用,
+  将来相机转起来时也照用:
+- 一次转动 = 播放一段固定的过渡动画,落到下一个枚举档位。
   **过渡动画期间不接受输入,不进行任何连通判定。**
-  中间角度必然穿帮,穿帮必须藏在动画里。
-- 相机俯角固定在 30–35 度区间,由 `style.ts` 常量控制。
+  中间状态必然穿帮,穿帮必须藏在动画里。
+- 相机俯角由 `style.ts` 常量控制,取 35.264°(atan(1/√2))。规格写 30–35,
+  而这是区间里**唯一**让整数格点精确重合的值:补偿比 √2/tan(俯角) 在这里等于
+  2,33° 给 2.178,30° 给 2.449 —— 都会让两条边永远差一点点,正是规格排除
+  透视相机时要避免的那种差一点。
 
 几何:
 
