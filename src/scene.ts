@@ -33,7 +33,8 @@ const lambert = (colour: string): MeshLambertMaterial =>
   new MeshLambertMaterial({ color: colour });
 
 /** 一块露台:主体、顶面薄板(亮一档)、檐口(略宽,暗一档),
- *  再加上砖缝和一圈蓝釉镶边。单个 box 在固定光下会读成一张纸,规格明令不许。 */
+ *  再加上一圈蓝釉镶边。单个 box 在固定光下会读成一张纸,规格明令不许。
+ *  顶面不画砖缝——规格明确把它归为调试渲染,产线上的顶面是实心石面。 */
 function terrace(size: number, hue: keyof typeof PALETTE = "sandstone"): Group {
   const g = new Group();
   const tone = PALETTE[hue];
@@ -48,21 +49,6 @@ function terrace(size: number, hue: keyof typeof PALETTE = "sandstone"): Group {
   );
   slab.position.y = top + FORM.terraceSlab / 2;
   g.add(slab);
-
-  // 砖缝:顶面上几道暗一档的细线,两个方向各来一组。砖砌质感由几何做出来,
-  // 没有贴图 —— 规格禁止贴图文件。
-  const seamY = top + FORM.terraceSlab + 0.001;
-  for (let i = 1; i <= FORM.brickLines; i++) {
-    const t = (i / (FORM.brickLines + 1) - 0.5) * size * 0.94;
-    for (const along of [true, false]) {
-      const seam = new Mesh(
-        new BoxGeometry(along ? size * 0.94 : 0.022, 0.006, along ? 0.022 : size * 0.94),
-        lambert(tone.dark),
-      );
-      seam.position.set(along ? 0 : t, seamY, along ? t : 0);
-      g.add(seam);
-    }
-  }
 
   // 伊什塔尔门的钴蓝釉:沿顶面四周镶一圈。建筑上唯一的蓝,和水同色不是巧合。
   for (const [ox, oz] of [
@@ -97,46 +83,6 @@ function terrace(size: number, hue: keyof typeof PALETTE = "sandstone"): Group {
   return g;
 }
 
-/** 一根分段柱子,不是一根等宽圆柱。 */
-function drum(height: number): Group {
-  const g = new Group();
-  const each = height / FORM.columnSegments;
-  for (let i = 0; i < FORM.columnSegments; i++) {
-    const r = FORM.columnRadius * (1 - i * 0.07);
-    const seg = new Mesh(
-      new CylinderGeometry(r, r * 1.07, each * 0.9, 8),
-      lambert(i % 2 === 0 ? PALETTE.sandstone.mid : PALETTE.sandstone.dark),
-    );
-    seg.position.y = -each * (i + 0.5);
-    g.add(seg);
-  }
-  // 柱头:一块略宽的方石,把柱子和露台底面接起来。
-  const capital = new Mesh(
-    new BoxGeometry(FORM.columnRadius * 2.9, 0.09, FORM.columnRadius * 2.9),
-    lambert(PALETTE.sandstone.light),
-  );
-  capital.position.y = -0.03;
-  g.add(capital);
-  return g;
-}
-
-/** 一排柱廊撑起一块露台。一根柱子读作「支架」,一排柱子才读作「建筑」。 */
-function colonnade(size: number, height: number): Group {
-  const g = new Group();
-  const n = FORM.colonnade;
-  const step = (size * 0.78) / (n - 1);
-  for (let i = 0; i < n; i++) {
-    for (let j = 0; j < n; j++) {
-      // 只排周边一圈 —— 中间的柱子谁也看不见,白白拖慢。
-      if (i > 0 && i < n - 1 && j > 0 && j < n - 1) continue;
-      const c = drum(height);
-      c.position.set(-size * 0.39 + i * step, 0, -size * 0.39 + j * step);
-      g.add(c);
-    }
-  }
-  return g;
-}
-
 /** 一段砖砌水渠:两道侧壁夹着一条水。水是独立的物体,不是把渠染蓝 —— 后者
  *  会让水淹掉砖,读起来就不再是「某个东西里面的水」。 */
 /**
@@ -154,8 +100,10 @@ function channel(from: Vec3, to: Vec3): { group: Group; water: Mesh; half: Mesh 
   const rawSpan = Math.hypot(rawDx, rawDz);
   const angle = Math.atan2(rawDx, rawDz);
 
-  // 从池沿出发,不从池心。
-  const inset = Math.min(FORM.poolInset, rawSpan * 0.42);
+  // 从池沿出发,不从池心 —— 收进去的量就是池子自己的半径(同一个常数也用来画
+  // 池子本体),不是另起一个看着顺眼的比例。span 太短时封顶在半程,防止几何
+  // 长度变负,这是数学上的安全边界,不是手调的观感数字。
+  const inset = Math.min(FORM.poolRadius, rawSpan / 2 - 0.01);
   const ux = rawDx / rawSpan;
   const uz = rawDz / rawSpan;
   const start: Vec3 = [from[0] + ux * inset, from[1], from[2] + uz * inset];
@@ -373,11 +321,6 @@ export function createStage(canvas: HTMLCanvasElement, level: Level, layout: Lay
     if (!place || !("at" in place)) continue;
     const g = terrace(FORM.terraceSize * (platform.id === "ground" ? 2.4 : 1));
     g.position.set(...place.at);
-    if (platform.id !== "ground") {
-      const legs = colonnade(FORM.terraceSize, FORM.pierLength);
-      legs.position.set(place.at[0], place.at[1] - FORM.terraceBody / 2, place.at[2]);
-      world.add(legs);
-    }
     mount(g, place);
     pieces.set(platform.id, g);
   }
@@ -409,7 +352,8 @@ export function createStage(canvas: HTMLCanvasElement, level: Level, layout: Lay
       }
     }
     // 圆池,深蓝釉边框着水面 —— 参考图里池子都是圆的,方池读起来像地砖。
-    const r = FORM.terraceSize * scale * 0.33;
+    // 半径用 FORM.poolRadius,和渠道内缩用的是同一个常数。
+    const r = FORM.poolRadius * scale;
     const rim = new Mesh(
       new CylinderGeometry(r * 1.16, r * 1.16, 0.1, 24),
       lambert(PALETTE.lapis.dark),
@@ -422,9 +366,6 @@ export function createStage(canvas: HTMLCanvasElement, level: Level, layout: Lay
     g.add(w);
     poolWater.set(pool.id, w);
     g.position.set(...place.at);
-    const legs = colonnade(FORM.terraceSize * scale, FORM.pierLength);
-    legs.position.set(place.at[0], place.at[1] - FORM.terraceBody / 2, place.at[2]);
-    world.add(legs);
     mount(g, place);
     pieces.set(pool.id, g);
   }

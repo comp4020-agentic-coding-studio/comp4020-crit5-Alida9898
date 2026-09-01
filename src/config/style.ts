@@ -73,23 +73,13 @@ export const FORM = {
   /** Steps are built, not ramped: each one has a real riser and tread. */
   stepRise: 0.16,
   stepTread: 0.26,
-  /** Columns are segmented rather than one tube of constant width. */
-  columnSegments: 3,
-  columnRadius: 0.09,
-  /** 柱子长度是固定的,不跟着露台的世界高度走 —— 后者会让上层露台长出一根
-   *  穿出画面的钉子。柱子的作用是「这块是架空的」,不是量高度。 */
-  pierLength: 1.35,
-  /** 每块露台下面是一排柱廊,不是一根柱子。神庙感全在这里 —— 一根柱子读作
-   *  「支架」,一排柱子才读作「建筑」。 */
-  colonnade: 3,
-  /** 顶面的砖缝条数。砖砌质感由几何做出来,没有贴图。 */
-  brickLines: 3,
   /** 蓝釉镶边的宽度,沿露台顶面四周走一圈。 */
   glazeBand: 0.08,
   /** Channels: a masonry trough with water sitting inside it. */
   channelWidth: 0.38,
   channelWall: 0.09,
   waterInset: 0.06,
-  /** 渠从池沿起画,而不是从池心 —— 这是往里收的距离。 */
-  poolInset: 0.42,
+  /** 池子的半径:直径 0.8 TILE。渠道从池沿起画而不是从池心起,用的就是这同
+   *  一个数 —— 不是另起一个看着顺眼的比例(那正是 0.42 这个坑的成因)。 */
+  poolRadius: 0.4,
 } as const;

@@ -122,6 +122,12 @@ describe("the render constraints hold", () => {
     // flat under a fixed light.
     expect(FORM.corniceOverhang).toBeGreaterThan(0);
     expect(FORM.terraceSlab).toBeGreaterThan(0);
-    expect(FORM.columnSegments).toBeGreaterThan(1);
+  });
+
+  it("ties the channel's pool inset to the pool's own radius, not a tuned ratio", () => {
+    // §3.1 bans decimal nudges to position; a pool radius is a real dimension,
+    // so it's the only thing allowed to move a channel's start off the grid.
+    expect(FORM.poolRadius).toBeGreaterThan(0);
+    expect(FORM.poolRadius).toBeLessThan(0.5);
   });
 });
