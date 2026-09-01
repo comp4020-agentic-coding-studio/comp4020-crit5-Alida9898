@@ -143,9 +143,13 @@ h1 {
    就像没被收到。这一圈只说「收到了,是这里」,说完就没,不留任何常驻的东西在
    画面上(§6 不做 HUD)。 */
 .ripple {
+  /* 一个记号,不是一个特效。荡到最大时也就一个指尖那么大 —— 它只需要说
+     「收到了,是这里」,再大就开始和画面抢戏,而画面才是玩家要读的东西。 */
+  --ripple-size: clamp(0.9rem, 1.8vw, 1.3rem);
+
   position: absolute;
-  width: clamp(2.6rem, 5vw, 3.6rem);
-  height: clamp(2.6rem, 5vw, 3.6rem);
+  width: var(--ripple-size);
+  height: var(--ripple-size);
   border: 2px solid var(--lapis-dark);
   border-radius: 50%;
   transform: translate(-50%, -50%);
@@ -158,13 +162,13 @@ h1 {
 
 @keyframes ripple {
   from {
-    opacity: 0.85;
-    scale: 0.35;
+    opacity: 0.9;
+    scale: 0.4;
   }
 
   to {
     opacity: 0;
-    scale: 2.1;
+    scale: 1.35;
   }
 }
 
