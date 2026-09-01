@@ -4,6 +4,29 @@
 
 ---
 
+## 当前状态(2026-09-01 20:10,最后一次 agent 回合)
+
+- **全部工作已 commit 并 push**,本地与 `origin/main` 齐平。最后一笔是
+  `fb11a2f`「步骤 2:把 scene-invariants 的六条不变量转绿,预算公式仲裁出
+  三个设计决定」。`pnpm check` 绿:**7 文件 76 测试**(下面「现在做出了
+  什么」里的 69 是旧数)。
+- **本地部署验证已过**:`pnpm build` 绿;`pnpm preview` 起在 4173,
+  agent-browser 拍过 1920×1080 与 390×844,画面正常、交互在首屏之内、
+  `ab errors` 空、`ab a11y` 0 violations / 0 incomplete。
+  `vite.config.ts` 是 `base: "./"` 且 index.html 在根目录,所以 Pages 的
+  子路径不用改配置,`./card.png` 也解得对。
+- **线上还没有东西**,而且这是有意的:仓库 private 到 cutoff(见文末),
+  `checks.yml` 每个 job 都是 `if: !private`,所以 `fb11a2f` 那次 run 的状态
+  是 `skipped`。**周三 12:00 前必须跑 `/comp4020:ship`**,否则被批改的那个
+  网址不存在。这一步要作者本人拍板,agent 不擅自翻公开。
+- **card.png 与 description meta 已是本项目的**(`2a83cac`,通关画面),
+  不必再做。
+- `reflections/crit-5.md` 和 `PROCESS.md` 仍然只能作者本人写。PROCESS.md
+  的第四段素材:传感器逼出的预算仲裁(池底进关卡数据 / 渠 5 mesh /
+  兽 8 primitive),对应 commit 就是 `fb11a2f`。
+
+---
+
 ## 现在做出了什么
 
 **第一关能玩了。** `pnpm dev` → `http://localhost:5173/`
