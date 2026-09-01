@@ -132,6 +132,71 @@ function pool(): Mesh {
   );
 }
 
+/**
+ * 终点大池的上层:一根柱子托起一只浅盆,盆里一层水。
+ *
+ * 为什么只有大池有:§3.5 的几何词汇表里池子就是「1 格、内嵌的圆柱」,而喷泉
+ * 是往上长的 —— 两者直接冲突。所以这个形只给**终点**那一口,它在规格 §5 里
+ * 本来就有个专名(塔顶的大蓄水池),需要一个和沿途池子一眼分得开的形。
+ *
+ * 颜色是 `sandstone.light` —— §3.7 三档里唯一的米白,不是自选的颜色。它底下
+ * 那块砖仍然是赭金:没有 HUD 也没有文字,玩家一眼认出目标靠的是那团金色,
+ * 把整个终点刷成米白等于把那个信号删掉。金座上的一件米白器物,两个都留住。
+ *
+ * 下层(砖里那口内嵌的池子)一点没动 —— 「水面低于池沿」那条不变量量的是它,
+ * 柱和盆长在它上面,不参与那条判定。
+ */
+function fountainTop(): { group: Group; water: Mesh } {
+  const g = new Group();
+  const tone = PALETTE.sandstone;
+
+  const stem = new Mesh(
+    new CylinderGeometry(
+      FORM.fountainStemRadius,
+      FORM.fountainStemRadius,
+      FORM.fountainStemHeight,
+      16,
+    ).translate(0, FORM.fountainStemHeight / 2, 0),
+    lambert(tone.mid),
+  );
+  g.add(stem);
+
+  // 盆是**一圈开口的墙**,不是一个实心圆柱 —— 和池沿同一个办法,而且是同一个
+  // 理由:没有 CSG,实心的盆装不下水,水只能被盖死在里面。第一版就是实心的,
+  // 盆顶和水面共面,z-fighting 在盆里打出一个风车花纹。
+  // DoubleSide 是因为一片没有厚度的墙,远侧那半圈的正面朝外会被剔掉。
+  const bowlY = FORM.fountainStemHeight;
+  const bowl = new Mesh(
+    new CylinderGeometry(
+      FORM.fountainBowlRadius,
+      FORM.fountainBowlRadius,
+      FORM.fountainBowlHeight,
+      24,
+      1,
+      true,
+    ).translate(0, bowlY + FORM.fountainBowlHeight / 2, 0),
+    lambert(tone.light, DoubleSide),
+  );
+  g.add(bowl);
+
+  // 盆里的水:水面比盆沿低 `poolSink`,和下层那口池子**同一个**常数 ——
+  // 「内嵌」就是水面低于沿口,两层说的是同一句话。水的下缘仍然在盆底之上,
+  // 所以从 35° 看过去不会从盆底下露出来。
+  const waterTop = bowlY + FORM.fountainBowlHeight - FORM.poolSink;
+  const water = new Mesh(
+    new CylinderGeometry(
+      FORM.fountainBowlRadius - FORM.waterInset,
+      FORM.fountainBowlRadius - FORM.waterInset,
+      FORM.fountainBowlWater,
+      24,
+    ).translate(0, waterTop - FORM.fountainBowlWater / 2, 0),
+    lambert(PALETTE.lapis.mid),
+  );
+  g.add(water);
+
+  return { group: g, water };
+}
+
 /** 一段砖砌水渠:两道侧壁夹着一条水。水是独立的物体,不是把渠染蓝 —— 后者
  *  会让水淹掉砖,读起来就不再是「某个东西里面的水」。 */
 /**
@@ -231,6 +296,10 @@ export type BuiltWorld = {
   pieces: Map<PortId, Group>;
   waters: Map<PortId, { full: Mesh; half: Mesh }>;
   poolWater: Map<PortId, Mesh>;
+  /** 喷泉上层盆里那层水。和 `poolWater` 分开放,是因为那条「水面低于池沿」的
+   *  不变量量的是砖里那口池子;上层长在它**上面**,混进同一个 map 会让不变量
+   *  变成「量喷泉的最高点」,当场自相矛盾。 */
+  grandWater: Map<PortId, Mesh>;
   beast: Group;
 };
 
@@ -267,6 +336,7 @@ export function buildWorld(level: Level, layout: Layout): BuiltWorld {
   const pieces = new Map<PortId, Group>();
   const waters = new Map<PortId, { full: Mesh; half: Mesh }>();
   const poolWater = new Map<PortId, Mesh>();
+  const grandWater = new Map<PortId, Mesh>();
 
   /** 把一个 group 挂到它所属的砖块下,这样转动时它跟着走。 */
   function mount(group: Group, place: Placement): void {
@@ -314,6 +384,12 @@ export function buildWorld(level: Level, layout: Layout): BuiltWorld {
     w.visible = !p.isFinal;
     g.add(w);
     poolWater.set(p.id, w);
+    if (p.grand) {
+      const top = fountainTop();
+      top.water.visible = w.visible;
+      grandWater.set(p.id, top.water);
+      g.add(top.group);
+    }
     g.position.set(...place.at);
     mount(g, place);
     pieces.set(p.id, g);
@@ -386,7 +462,7 @@ export function buildWorld(level: Level, layout: Layout): BuiltWorld {
   }
   world.add(beast);
 
-  return { world, turning, pieces, waters, poolWater, beast };
+  return { world, turning, pieces, waters, poolWater, grandWater, beast };
 }
 
 export type Stage = {
@@ -421,7 +497,7 @@ export function createStage(canvas: HTMLCanvasElement, level: Level, layout: Lay
   scene.add(sun);
   scene.add(new AmbientLight("#ffffff", LIGHT.ambientIntensity));
 
-  const { world, turning, waters, poolWater, beast } = buildWorld(level, layout);
+  const { world, turning, waters, poolWater, grandWater, beast } = buildWorld(level, layout);
   scene.add(world);
 
   // 取景:把所有 port 在所有配置下的投影都框进来,免得转到某一档就跑出画外。
@@ -504,6 +580,9 @@ export function createStage(canvas: HTMLCanvasElement, level: Level, layout: Lay
       const pool = level.pools.find((p) => p.id === id);
       // 泉眼本来就是有水的;只有终点大池要等水灌进来。
       w.visible = pool?.isFinal ? wet.has(id) : true;
+      // 上层盆跟着下层一起亮:一口喷泉不会只有一层有水。
+      const top = grandWater.get(id);
+      if (top) top.visible = w.visible;
     }
   }
 

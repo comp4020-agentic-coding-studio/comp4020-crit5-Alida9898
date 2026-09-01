@@ -36,6 +36,13 @@ const BUDGET = {
   platform: 3,
   /** §3.5:一个内嵌的圆柱,直径 0.8 TILE。就一个。 */
   pool: 1,
+  /** 终点大池另外加的三件:柱、盆、盆里的水 —— 也就是双层喷泉的上层。
+   *
+   *  只有 `grand` 的池子拿得到这份加码。规格 §5 给了它一个专名(塔顶的大
+   *  蓄水池),它需要一个和沿途池子一眼分得开的形;而「一眼分得开」在一个
+   *  没有 HUD、没有文字的游戏里就是全部的目标指示。下层那口内嵌的池子一点
+   *  没动,「水面低于池沿」那条不变量量的仍然是它。 */
+  grandExtra: 3,
   /** 槽底 + 两道边墙 + 满水 + 半水。
    *
    *  满水和半水非得是两件不可:规则 4 要求「水流到一半停住、末端悬空」是一个
@@ -174,7 +181,9 @@ for (const { name, level, layout } of LEVELS) {
       };
       const want = {
         platform: BUDGET.platform * level.platforms.length,
-        pool: BUDGET.pool * level.pools.length,
+        pool:
+          BUDGET.pool * level.pools.length +
+          BUDGET.grandExtra * level.pools.filter((p) => p.grand).length,
         channel: BUDGET.channel * level.channels.length,
         beast: BUDGET.beast,
       };
