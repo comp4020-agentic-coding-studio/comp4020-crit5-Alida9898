@@ -146,7 +146,7 @@ function pool(): Mesh {
  * 下层(砖里那口内嵌的池子)一点没动 —— 「水面低于池沿」那条不变量量的是它,
  * 柱和盆长在它上面,不参与那条判定。
  */
-function fountainTop(): { group: Group; water: Mesh } {
+function fountainTop(): { group: Group; water: Mesh; spray: Group; drops: Group[] } {
   const g = new Group();
   const tone = PALETTE.sandstone;
 
@@ -194,7 +194,46 @@ function fountainTop(): { group: Group; water: Mesh } {
   );
   g.add(water);
 
-  return { group: g, water };
+  // —— 喷出来的水。通关之前整组隐藏。 ——
+  //
+  // §6 原本写的通关反馈是「每层长出椰枣与藤蔓,枝叶填满画面」;换成喷泉喷水
+  // 是作者 2026-09-01 的决定,记在 CLAUDE.md §6 里。换的理由是它落在玩家此刻
+  // 正盯着的那个点上:大池刚刚满。
+  //
+  // 水柱和水滴都是实心不透明的 lapis —— §3.4 连水都不许开透明,所以「这是水」
+  // 靠它动起来说,不靠半透明。
+  const spray = new Group();
+  spray.visible = false;
+  const jetBase = waterTop;
+  const jet = new Mesh(
+    new CylinderGeometry(
+      FORM.sprayJetRadius,
+      FORM.sprayJetRadius,
+      FORM.sprayJetHeight,
+      12,
+    ).translate(0, jetBase + FORM.sprayJetHeight / 2, 0),
+    lambert(PALETTE.lapis.light),
+  );
+  spray.add(jet);
+
+  // 每颗水滴是一个 group 裹着一个**落在原点**的 mesh,动的是 group ——
+  // 和兽同一个办法,理由也一样:`spec/scene-invariants.test.ts` 要求每个 mesh
+  // 的 position 都在半格格点上,而会动的东西不可能满足它。把「会动」这件事
+  // 交给 group,不变量就仍然管得住所有静止的几何,不用为动画开一个口子。
+  const drops: Group[] = [];
+  for (let i = 0; i < FORM.sprayDropCount; i++) {
+    const holder = new Group();
+    holder.add(
+      new Mesh(new SphereGeometry(FORM.sprayDropRadius, 10, 8), lambert(PALETTE.lapis.light)),
+    );
+    // 起始位置由 step() 每帧算;先摆到柱顶,免得第一帧闪在原点。
+    holder.position.set(0, jetBase + FORM.sprayJetHeight, 0);
+    drops.push(holder);
+    spray.add(holder);
+  }
+  g.add(spray);
+
+  return { group: g, water, spray, drops };
 }
 
 /** 一段砖砌水渠:两道侧壁夹着一条水。水是独立的物体,不是把渠染蓝 —— 后者
@@ -300,6 +339,8 @@ export type BuiltWorld = {
    *  不变量量的是砖里那口池子;上层长在它**上面**,混进同一个 map 会让不变量
    *  变成「量喷泉的最高点」,当场自相矛盾。 */
   grandWater: Map<PortId, Mesh>;
+  /** 喷泉喷出来的水。通关之前 `visible === false` —— 传感器盯着这一条。 */
+  grandSpray: Map<PortId, { group: Group; drops: Group[]; base: number }>;
   beast: Group;
 };
 
@@ -337,6 +378,7 @@ export function buildWorld(level: Level, layout: Layout): BuiltWorld {
   const waters = new Map<PortId, { full: Mesh; half: Mesh }>();
   const poolWater = new Map<PortId, Mesh>();
   const grandWater = new Map<PortId, Mesh>();
+  const grandSpray = new Map<PortId, { group: Group; drops: Group[]; base: number }>();
 
   /** 把一个 group 挂到它所属的砖块下,这样转动时它跟着走。 */
   function mount(group: Group, place: Placement): void {
@@ -388,6 +430,11 @@ export function buildWorld(level: Level, layout: Layout): BuiltWorld {
       const top = fountainTop();
       top.water.visible = w.visible;
       grandWater.set(p.id, top.water);
+      grandSpray.set(p.id, {
+        group: top.spray,
+        drops: top.drops,
+        base: FORM.fountainStemHeight + FORM.fountainBowlHeight - FORM.poolSink,
+      });
       g.add(top.group);
     }
     g.position.set(...place.at);
@@ -462,7 +509,7 @@ export function buildWorld(level: Level, layout: Layout): BuiltWorld {
   }
   world.add(beast);
 
-  return { world, turning, pieces, waters, poolWater, grandWater, beast };
+  return { world, turning, pieces, waters, poolWater, grandWater, grandSpray, beast };
 }
 
 export type Stage = {
@@ -477,6 +524,8 @@ export type Stage = {
   /** 哪些渠灌满了、哪些半满、哪些池子有水。 */
   setWater: (filled: Set<PortId>, half: PortId[], wet: Set<PortId>) => void;
   setBeast: (port: PortId) => void;
+  /** 通关了没有。通关的那一刻喷泉开始喷水,那是全部的通关反馈。 */
+  setSolved: (solved: boolean) => void;
   /** 某个 port 在画面上的位置(0–1),给 DOM 按钮定位用。用的是同一个投影。 */
   toScreen: (port: PortId) => { x: number; y: number };
   resize: (w: number, h: number) => void;
@@ -497,7 +546,8 @@ export function createStage(canvas: HTMLCanvasElement, level: Level, layout: Lay
   scene.add(sun);
   scene.add(new AmbientLight("#ffffff", LIGHT.ambientIntensity));
 
-  const { world, turning, waters, poolWater, grandWater, beast } = buildWorld(level, layout);
+  const { world, turning, waters, poolWater, grandWater, grandSpray, beast } =
+    buildWorld(level, layout);
   scene.add(world);
 
   // 取景:把所有 port 在所有配置下的投影都框进来,免得转到某一档就跑出画外。
@@ -589,6 +639,10 @@ export function createStage(canvas: HTMLCanvasElement, level: Level, layout: Lay
   let beastWant: Vec3 | null = null;
   let beastShown: Vec3 | null = null;
 
+  function setSolved(solved: boolean): void {
+    for (const s of grandSpray.values()) s.group.visible = solved;
+  }
+
   function setBeast(port: PortId): void {
     const place = layout.ports[port];
     if (!place || !("at" in place)) return;
@@ -630,6 +684,25 @@ export function createStage(canvas: HTMLCanvasElement, level: Level, layout: Lay
           beast.position.set(...beastShown);
         }
       }
+      // 喷泉。水滴各自错开相位,沿一条抛物线出去再落回盆里 —— 一条弧线就够
+      // 说明「它在喷」,不需要粒子系统,每一颗水滴都在 BUDGET 里算数。
+      for (const s of grandSpray.values()) {
+        if (!s.group.visible) continue;
+        const now = performance.now();
+        for (let i = 0; i < s.drops.length; i++) {
+          const phase = ((now / FORM.sprayMs + i / s.drops.length) % 1);
+          // 方位角按序号铺开,水滴因此是四散的,不是排成一列。
+          const a = (i / s.drops.length) * Math.PI * 2;
+          const out = FORM.sprayReach * phase;
+          // 抛物线:升到顶再落回,phase=0 和 1 都在盆面上。
+          const up = FORM.sprayRise * 4 * phase * (1 - phase);
+          s.drops[i].position.set(
+            Math.cos(a) * out,
+            s.base + FORM.sprayJetHeight * 0.6 + up,
+            Math.sin(a) * out,
+          );
+        }
+      }
       if (Math.abs(azShown - azWant) > 0.01) {
         // 走最短的一边转过去。中间的每一个角度都必然穿帮 —— 那正是这段动画
         // 存在的意义:把穿帮藏进去。
@@ -657,6 +730,7 @@ export function createStage(canvas: HTMLCanvasElement, level: Level, layout: Lay
     turning: () => Math.abs(azShown - azWant) > 0.01,
     setWater,
     setBeast,
+    setSolved,
     toScreen: (port) => {
       const place = layout.ports[port];
       const raw: Vec3[] = place

@@ -49,7 +49,15 @@ export function mount(el: Elements): () => void {
   /** 只重画,不引水 —— 水只在按空格时流(规则 3)。 */
   function resolve(): void {
     paintWater();
-    el.stage.classList.toggle("flowered", finalPoolFull(level, state));
+    // 通关反馈:喷泉开始喷水。这是全部 —— §6 不许 HUD、不许胜利弹窗、
+    // 不许进度条,所以「我赢了」只能由画面本身说。
+    //
+    // `.flowered` 这个类以前只是被切来切去,styles.css 里根本没有它,
+    // scene.ts 也不认识 —— 也就是说通关一直是**完全不可见**的。现在真的
+    // 接到场景上了。
+    const solved = finalPoolFull(level, state);
+    el.stage.classList.toggle("flowered", solved);
+    stage?.setSolved(solved);
     el.stage.classList.toggle("attap", standingOnPool(level, state) !== null);
   }
 

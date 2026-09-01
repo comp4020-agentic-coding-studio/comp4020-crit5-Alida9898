@@ -489,6 +489,24 @@ the whole tower blooms.
 
 ### 6. Completion feedback
 
+**Changed on 2026-09-01, at the author's direction: the completion feedback is
+the fountain starting to spray, not the foliage below.** The rest of this
+section still holds --- no HUD, no victory modal, no progress bar, and nothing
+may cover a load-bearing seam while the player is still solving. What changed is
+only *which* visible thing answers "did I win": a jet and five droplets rising
+out of the great cistern's upper bowl, at the exact spot the player is already
+watching when the cistern tops out. It is hidden until then, and
+`spec/scene-invariants.test.ts` pins that --- a spray running at level start is
+not something an eye catches as a bug, it just leaves the player unsure when
+they won.
+
+Two things this costs, recorded so they are choices and not oversights: the
+foliage below is the game's title made visible, and `date` green is now the one
+hue in the §3.7 palette with nothing using it. Adding the foliage back on top of
+the spray remains open; the spray is what shipped under the deadline.
+
+The paragraph the change replaces, kept because the levels beyond 1 may want it:
+
 Every tier the water has passed through grows date palms and vines. At level
 start the terraces are bare stone and the view is fully open; at solve,
 foliage fills the frame and foreground leaves hang down in front of the
