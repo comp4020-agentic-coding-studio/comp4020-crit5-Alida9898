@@ -39,9 +39,12 @@ export const CAMERA = {
    *
    *  取景框的是**四个角度的并集**,不是当前角度 —— 按当前角度取景的话,每转
    *  一次镜头远近就跳一次,而转场那 620ms 正是不许出现意外的时候。并集已经
-   *  比任何单个角度大,所以这个余量只需要一点点;原来是 0.85,画面因此空了
-   *  一大圈。 */
-  framePad: 0.35,
+   *  比任何单个角度大,所以这个余量只需要一点点。
+   *
+   *  取景量的是**建筑的包围盒**,不是 port 的锚点 —— 一度量的是锚点,而露台
+   *  砌到地面、大池成了高塔、喷泉往上喷之后,这些几何全长在锚点外面,画面
+   *  直接溢出屏幕。量包围盒之后,以后新加的几何自动被框进来。 */
+  framePad: 0.6,
   /** How long a turn takes. Input and every connectivity judgement are
    *  suspended for exactly this long: the in-between angles break the
    *  illusion, and the animation is where that is hidden. */

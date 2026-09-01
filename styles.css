@@ -118,6 +118,16 @@ h1 {
   transform: translate(-50%, -50%);
 }
 
+/* 可点区域 = 那块砖顶面的形状。按钮的框是四个投影角的外接矩形,clip-path 把它
+   裁成那个平行四边形 —— clip-path 同时裁命中区域,所以相邻两块砖的外接矩形
+   叠得再多也不会抢对方的点击。宽高由脚本按投影写在 style 上。 */
+.handle.area {
+  width: auto;
+  height: auto;
+  border-radius: 0;
+  transform: none;
+}
+
 /* 落点不画任何东西。
    原本这里有一圈虚线,想表达「这儿能点」—— 但它自己说明不了自己,而且是叠在
    画面上的 HUD,规格明令不做。改成纪念碑谷的办法:点哪儿走哪儿,能走就走,
@@ -179,6 +189,15 @@ h1 {
 .handle:focus-visible {
   outline: 3px solid var(--lapis-dark);
   outline-offset: 2px;
+}
+
+/* 被裁成平行四边形的按钮上,outline 会被 clip-path 一起裁掉,等于没有焦点框。
+   所以这里改成把那块砖整个染一层青金色 —— 焦点在哪一格,一眼就看得见,而且
+   只在键盘聚焦时出现,不是常驻的 HUD。 */
+.handle.area:focus-visible {
+  outline: none;
+  background: var(--lapis-dark);
+  opacity: 0.3;
 }
 
 .progress {

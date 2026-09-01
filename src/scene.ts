@@ -8,6 +8,7 @@
 
 import {
   AmbientLight,
+  Box3,
   BoxGeometry,
   CylinderGeometry,
   DirectionalLight,
@@ -528,6 +529,14 @@ export type Stage = {
   setSolved: (solved: boolean) => void;
   /** 某个 port 在画面上的位置(0–1),给 DOM 按钮定位用。用的是同一个投影。 */
   toScreen: (port: PortId) => { x: number; y: number };
+  /**
+   * 某个 port **顶面那一格**投到画面上的四个角(0–1,顺时针)。
+   *
+   * 有了它,可点区域就是玩家看见的那块砖本身,而不是砖中心的一个小圆点。
+   * 四个角一样是穿过相机投影出来的(§3.3),没有射线检测、没有角度运算 ——
+   * 「哪里可点」和「哪里画得出来」因此是同一次计算的两个出口,不可能对不上。
+   */
+  toScreenQuad: (port: PortId) => { x: number; y: number }[];
   resize: (w: number, h: number) => void;
   dispose: () => void;
 };
@@ -550,38 +559,41 @@ export function createStage(canvas: HTMLCanvasElement, level: Level, layout: Lay
     buildWorld(level, layout);
   scene.add(world);
 
-  // 取景:把所有 port 在所有配置下的投影都框进来,免得转到某一档就跑出画外。
+  // 取景:把**建筑真正的包围盒**在四个角度下的投影都框进来。
+  //
+  // 原来框的是 port 的锚点。锚点是格心,而几何长在格心之外 —— 露台砌到地面、
+  // 大池是一座高塔、喷泉往上喷,这些一律在锚点外面,于是画面溢出屏幕。
+  // 改成量包围盒,新加的任何几何都自动被框进来,不用记得回来改取景。
+  //
+  // 仍然是四个角度的并集,不是当前角度:按当前角度取景的话,每转一次镜头
+  // 远近就跳一次,而转场那 620ms 正是不许出现意外的时候。
+  //
+  // (将来某一关的可转零件如果会把几何甩出这个盒子,取景得跟着长 —— 包围盒
+  // 量的是当前档位。第一关没有可转零件。)
   let minX = Infinity;
   let maxX = -Infinity;
   let minY = Infinity;
   let maxY = -Infinity;
-  // 相机会转,所以取景要把**每一个角度**下的投影都框进去 —— 只按开局角度框,
-  // 转过去就有东西跑出画外。
-  const note = (raw0: Vec3): void => {
-    const p: Vec3 = [
-      raw0[0] + world.position.x,
-      raw0[1] + world.position.y,
-      raw0[2] + world.position.z,
-    ];
-    for (const az of CAMERA.azimuthsDeg) {
-      const [x, y] = project(p, az);
-      minX = Math.min(minX, x);
-      maxX = Math.max(maxX, x);
-      minY = Math.min(minY, y);
-      maxY = Math.max(maxY, y);
-    }
-  };
-  for (const place of Object.values(layout.ports)) {
-    const raw: Vec3[] = "at" in place ? [place.at] : [place.from, place.to];
-    for (const p of raw) {
-      note(p);
-      const pivot = place.part ? layout.pivots[place.part] : undefined;
-      if (pivot) for (const t of [1, 2, 3] as Turn[]) note(turnedAround(p, pivot, t));
+  {
+    const box = new Box3().setFromObject(world);
+    for (const bx of [box.min.x, box.max.x]) {
+      for (const by of [box.min.y, box.max.y]) {
+        for (const bz of [box.min.z, box.max.z]) {
+          for (const az of CAMERA.azimuthsDeg) {
+            const [x, y] = project([bx, by, bz], az);
+            minX = Math.min(minX, x);
+            maxX = Math.max(maxX, x);
+            minY = Math.min(minY, y);
+            maxY = Math.max(maxY, y);
+          }
+        }
+      }
     }
   }
   const pad = CAMERA.framePad;
   const midX = (minX + maxX) / 2;
   const midY = (minY + maxY) / 2;
+  // 短边取两轴里更大的那个,画面因此不管宽高比都框得下整座建筑。
   const half = Math.max(maxX - minX, maxY - minY) / 2 + pad;
 
   const camera = new OrthographicCamera(
@@ -638,6 +650,32 @@ export function createStage(canvas: HTMLCanvasElement, level: Level, layout: Lay
 
   let beastWant: Vec3 | null = null;
   let beastShown: Vec3 | null = null;
+
+  /** 吸附到最近的**枚举角度**,不是最近的 90 的倍数 —— 方位角是 45/135/225/315,
+   *  一个都不是 90 的倍数,`Math.round(135/90)*90` 会给出 180,于是按钮一直落在
+   *  错的地方。 */
+  function snappedAz(): Azimuth {
+    return CAMERA.azimuthsDeg.reduce((best, a) =>
+      Math.abs(a - azShown) < Math.abs(best - azShown) ? a : best,
+    );
+  }
+
+  /** 建筑整体被挪到过原点,所以投影前要把那一下加回去。 */
+  function offset(p: Vec3): Vec3 {
+    return [p[0] + world.position.x, p[1] + world.position.y, p[2] + world.position.z];
+  }
+
+  /** 一个 port 的锚点,已经把它所在砖块当前的转角算进去。 */
+  function anchorPoints(port: PortId): Vec3[] {
+    const place = layout.ports[port];
+    if (!place) return [[0, 0, 0]];
+    const raw: Vec3[] = "at" in place ? [place.at] : [place.from, place.to];
+    const pivot = place.part ? layout.pivots[place.part] : undefined;
+    if (!pivot) return raw;
+    const turnNow = turning.find((t) => t.part === place.part);
+    const quarter = turnNow ? Math.round((-turnNow.target * 2) / Math.PI) : 0;
+    return raw.map((p) => turnedAround(p, pivot, (((quarter % 4) + 4) % 4) as Turn));
+  }
 
   function setSolved(solved: boolean): void {
     for (const s of grandSpray.values()) s.group.visible = solved;
@@ -732,44 +770,38 @@ export function createStage(canvas: HTMLCanvasElement, level: Level, layout: Lay
     setBeast,
     setSolved,
     toScreen: (port) => {
-      const place = layout.ports[port];
-      const raw: Vec3[] = place
-        ? "at" in place
-          ? [place.at]
-          : [place.from, place.to]
-        : [[0, 0, 0]];
-      const pivot = place?.part ? layout.pivots[place.part] : undefined;
-      const turnNow = turning.find((t) => t.part === place?.part);
-      const quarter = turnNow ? Math.round((-turnNow.target * 2) / Math.PI) : 0;
-      const pts = pivot
-        ? raw.map((p) => turnedAround(p, pivot, (((quarter % 4) + 4) % 4) as Turn))
-        : raw;
+      const pts = anchorPoints(port);
       let sx = 0;
       let sy = 0;
-      // 吸附到最近的**枚举角度**,不是最近的 90 的倍数 —— 方位角是
-      // 45/135/225/315,一个都不是 90 的倍数,Math.round(135/90)*90 会给出
-      // 180,于是按钮一直落在错的地方。
-      const az = CAMERA.azimuthsDeg.reduce((best, a) =>
-        Math.abs(a - azShown) < Math.abs(best - azShown) ? a : best,
-      );
-      for (const p0 of pts) {
-        const p: Vec3 = [
-          p0[0] + world.position.x,
-          p0[1] + world.position.y,
-          p0[2] + world.position.z,
-        ];
-        const [x, y] = project(p, az);
+      for (const p of pts) {
+        const [x, y] = project(offset(p), snappedAz());
         sx += x / pts.length;
         sy += y / pts.length;
       }
-      // 换算用相机**当前的**视锥边界,不用建相机时那个 half。
-      //
-      // 这里一度写的是 `(sx - midX + half) / (2 * half)` —— 那等于把视锥当成
-      // 永远是正方形。视锥改成按宽高比撑长边的那一刻,16:9 下横向就差了 1.78 倍,
-      // 按钮整排被推到画面外:点不到兽不走,连点击涟漪都不出现,而画面本身
-      // 一切正常。§3.3 的原话是「覆盖层定位只能把世界坐标穿过相机投影」,
-      // 手算一遍 NDC 就是这条禁令要防的东西。
       return frameFraction(sx, sy, camera);
+    },
+    toScreenQuad: (port) => {
+      const pts = anchorPoints(port);
+      if (pts.length === 0) return [];
+      // 一格宽:锚点是格心,所以四条边各让开半格。渠有两个锚点,包住它们就是
+      // 那条一格宽的带子 —— 和 §3.5 说的「一格宽的槽」是同一个形。
+      const xs = pts.map((p) => p[0]);
+      const zs = pts.map((p) => p[2]);
+      const x0 = Math.min(...xs) - TILE / 2;
+      const x1 = Math.max(...xs) + TILE / 2;
+      const z0 = Math.min(...zs) - TILE / 2;
+      const z1 = Math.max(...zs) + TILE / 2;
+      const y = pts[0][1];
+      const corners: Vec3[] = [
+        [x0, y, z0],
+        [x1, y, z0],
+        [x1, y, z1],
+        [x0, y, z1],
+      ];
+      return corners.map((c) => {
+        const [sx, sy] = project(offset(c), snappedAz());
+        return frameFraction(sx, sy, camera);
+      });
     },
     resize: (w, h) => {
       renderer.setPixelRatio(Math.min(devicePixelRatio, 2));

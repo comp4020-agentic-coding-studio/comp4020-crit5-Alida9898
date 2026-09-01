@@ -126,23 +126,58 @@ export function mount(el: Elements): () => void {
     }
 
     // 兽此刻走得到的每一处,都是可点的:地砖、泉眼,以及已经灌满的水渠。
+    //
+    // 可点区域是**那块砖本身**,不是砖中心的一个小圆点。四个角穿过相机投影
+    // 出来(§3.3),再用 clip-path 把按钮裁成那块砖顶面的形状 —— clip-path
+    // 同时裁命中区域,所以相邻两块砖的外接矩形叠得再多也不会抢对方的点击。
+    // 没有射线检测:「哪里可点」和「哪里画得出来」是同一次投影的两个出口。
     const here = state.beastAt;
     const reach = here ? walkableFrom(level, state, here) : new Set<string>();
     for (const port of reach) {
       if (port === here) continue;
-      const { x, y } = stage?.toScreen(port) ?? { x: 0.5, y: 0.5 };
+      const quad = stage?.toScreenQuad(port) ?? [];
       const b = document.createElement("button");
       b.type = "button";
       const isPool = level.pools.some((p) => p.id === port);
-      b.className = `handle walk${isPool ? " pool" : ""}`;
-      b.title = "";
-      b.style.left = `${x * 100}%`;
-      b.style.top = `${y * 100}%`;
+      b.className = `handle walk area${isPool ? " pool" : ""}`;
       b.setAttribute("aria-label", port);
-      b.addEventListener("click", () => {
+
+      if (quad.length === 4) {
+        const xs = quad.map((p) => p.x);
+        const ys = quad.map((p) => p.y);
+        const x0 = Math.min(...xs);
+        const x1 = Math.max(...xs);
+        const y0 = Math.min(...ys);
+        const y1 = Math.max(...ys);
+        const w = x1 - x0;
+        const h = y1 - y0;
+        b.style.left = `${x0 * 100}%`;
+        b.style.top = `${y0 * 100}%`;
+        b.style.width = `${w * 100}%`;
+        b.style.height = `${h * 100}%`;
+        // clip-path 的百分比是相对按钮自己的框,所以四个角要换算进去。
+        b.style.clipPath = `polygon(${quad
+          .map((p) => `${((p.x - x0) / w) * 100}% ${((p.y - y0) / h) * 100}%`)
+          .join(", ")})`;
+      } else {
+        // 拿不到四个角就退回中心那个小圆点 —— 宁可小,不要没有。
+        const { x, y } = stage?.toScreen(port) ?? { x: 0.5, y: 0.5 };
+        b.classList.remove("area");
+        b.style.left = `${x * 100}%`;
+        b.style.top = `${y * 100}%`;
+      }
+
+      b.addEventListener("click", (e) => {
         if (locked) return;
-        // 「我点的是这里」的回执。兽要走一段才到,不填这段空白,点击就像没被收到。
-        rippleAt(el.stage, x, y, INPUT.rippleMs);
+        // 涟漪落在**手指真正点到的那一点**上,不是砖的中心 —— 「我点的是这里」
+        // 说的就是这里。键盘触发的 click 没有坐标(detail === 0),那时才退回
+        // 砖的中心。
+        const box = el.stage.getBoundingClientRect();
+        const spot =
+          e.detail === 0
+            ? (stage?.toScreen(port) ?? { x: 0.5, y: 0.5 })
+            : { x: (e.clientX - box.left) / box.width, y: (e.clientY - box.top) / box.height };
+        rippleAt(el.stage, spot.x, spot.y, INPUT.rippleMs);
         state = { ...state, beastAt: port };
         stage?.setBeast(port);
         resolve();
