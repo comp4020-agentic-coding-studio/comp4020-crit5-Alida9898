@@ -92,81 +92,94 @@ describe("规则 3:兽站在池子上,水才流", () => {
   });
 
   it("站在泉眼上就能引水", () => {
-    const s = at("springA");
-    expect(standingOnPool(level1, s)).toBe("springA");
-    expect(fillingNow(level1, s)).toContain("span");
+    const s = at("spring", 135);
+    expect(standingOnPool(level1, s)).toBe("spring");
+    expect(fillingNow(level1, s)).toContain("aqueduct");
   });
 
   it("水从兽脚下那个池子出发,不是从某个固定的源头", () => {
-    // 任何池子都能当水源。从下游的泉眼引水,只会往它的下游走。
-    const fromB = reachable(level1, at("springB", 135));
-    expect(fromB.has("spout")).toBe(true);
-    expect(fromB.has("springA"), "水倒着流回上游了").toBe(false);
+    // 任何池子都能当水源,而水只往声明的下游走 —— 从下游那个池子引水,
+    // 水不会倒着爬回上游。这一关只有一条渠,所以用一块专门的小盘面来钉。
+    const twoWay: Level = {
+      name: "twoWay",
+      pools: [{ id: "top" }, { id: "mid" }, { id: "low", isFinal: true }],
+      channels: [
+        { id: "upper", ends: ["top", "mid"] },
+        { id: "lower", ends: ["mid", "low"] },
+      ],
+      platforms: [],
+      tapPoints: [],
+      parts: [],
+      waterLinks: [
+        { from: "top", to: "upper", when: {} },
+        { from: "upper", to: "mid", when: {} },
+        { from: "mid", to: "lower", when: {} },
+        { from: "lower", to: "low", when: {} },
+      ],
+      walkLinks: [],
+      opens: { camera: 45, turns: {} },
+    };
+    const fromMid = reachable(twoWay, { ...begin(twoWay), beastAt: "mid" });
+    expect(fromMid.has("lower"), "该往下游走").toBe(true);
+    expect(fromMid.has("upper"), "水倒着流回上游了").toBe(false);
+    expect(fromMid.has("top"), "水倒着流回上游了").toBe(false);
   });
 
   it("兽离开之后,已经发生的不回退", () => {
-    const poured = pour(level1, at("springA"));
-    expect(poured.filled.has("span")).toBe(true);
+    const poured = pour(level1, at("spring", 135));
+    expect(poured.filled.has("aqueduct")).toBe(true);
     const left = pour(level1, { ...poured, beastAt: "birth" });
-    expect(left.filled.has("span"), "兽一走渠就空了").toBe(true);
+    expect(left.filled.has("aqueduct"), "兽一走渠就空了").toBe(true);
   });
 });
 
 describe("规则 2 与 4:两端都锚住才算灌满", () => {
-  it("两端都是池子的渠,引水就灌满", () => {
-    expect(fillingNow(level1, at("springA"))).toEqual(["span"]);
-  });
-
-  it("同一次引水里,水会继续流进下一段渠然后停住", () => {
-    // 从泉眼 A 放水,水灌满 span、漫过泉眼 B、再流进 spout —— 而 spout 的
-    // 下游口还悬着,于是水停在那儿。玩家第一次引水就看见了这个失败态,
-    // 不用等到第六步。这是对的物理,不要写逻辑去拦它。
-    expect(halfFilled(level1, at("springA"))).toEqual(["spout"]);
-  });
-
-  it("下游端悬空时,水停在渠里 —— 这是允许发生的状态", () => {
-    // 视角不对,阶梯渠的下游口谁也接不到。水进得去,出不来。
-    const s = at("springB", 45);
+  it("开局那个角度下,水流进渠里就停住,末端悬空", () => {
+    // 第一关的转折点:玩家按了空格,水动了,却没到大池。画面上唯一还没试过
+    // 的东西就是方向键。不是 bug,不要写逻辑去拦,也不要弹提示。
+    const s = at("spring", 45);
     expect(fillingNow(level1, s), "不该算灌满").toEqual([]);
-    expect(halfFilled(level1, s), "应该半满且末端悬空").toEqual(["spout"]);
+    expect(halfFilled(level1, s), "应该半满且末端悬空").toEqual(["aqueduct"]);
     expect(pour(level1, s).filled.size, "半满不该被记成灌满").toBe(0);
   });
 
   it("转到对的视角之后,同一次引水就灌满了", () => {
-    const s = at("springB", 135);
-    expect(fillingNow(level1, s)).toEqual(["spout"]);
+    const s = at("spring", 135);
+    expect(fillingNow(level1, s)).toEqual(["aqueduct"]);
     expect(halfFilled(level1, s)).toEqual([]);
   });
 
   it("灌满不可逆:之后再怎么转视角也不会变空", () => {
-    let s = pour(level1, at("springB", 135));
-    expect(s.filled.has("spout")).toBe(true);
+    let s = pour(level1, at("spring", 135));
+    expect(s.filled.has("aqueduct")).toBe(true);
     for (const camera of [225, 315, 45, 135] as Azimuth[]) {
       s = pour(level1, { ...s, config: { ...s.config, camera } });
-      expect(s.filled.has("spout"), "已灌满的渠被排空了").toBe(true);
+      expect(s.filled.has("aqueduct"), "已灌满的渠被排空了").toBe(true);
     }
   });
 });
 
 describe("规则 5:空渠不能走,灌满的能走 —— 但「满」不等于「通」", () => {
   it("空渠站不上去、走不过去", () => {
-    // 这是本作最核心的一条。断口那头在渠灌满之前是到不了的。
-    const dry = at("springA");
-    expect(walkableFrom(level1, dry, "springA").has("springB")).toBe(false);
-    expect(canWalkTo(level1, dry, "springB")).toBe(false);
+    // 本作最核心的一条:没水的渠只是一道石头凹槽。
+    const dry = at("spring", 135);
+    expect(dry.filled.has("aqueduct")).toBe(false);
+    expect(walkableFrom(level1, dry, "spring").has("aqueduct")).toBe(false);
+    expect(canWalkTo(level1, dry, "grandBasin")).toBe(false);
   });
 
   it("灌满之后水面就是路面", () => {
-    const bridged = pour(level1, at("springA"));
-    expect(bridged.filled.has("span")).toBe(true);
-    expect(canWalkTo(level1, bridged, "springB"), "桥造好了却走不过去").toBe(true);
+    const bridged = pour(level1, at("spring", 135));
+    expect(bridged.filled.has("aqueduct")).toBe(true);
+    expect(canWalkTo(level1, bridged, "aqueduct"), "灌满了却踩不上去").toBe(true);
+    expect(canWalkTo(level1, bridged, "grandBasin"), "走不到大池").toBe(true);
   });
 
   it("满了、但那个角度下看起来是断的,就还是走不过去", () => {
     // 「满」是水的状态,「通」是画面的状态,谁也不蕴含谁。把这两件事合并成
     // 一个布尔是最诱人的简化,而那会把这个游戏删掉。
-    const full = at("springB", 45, ["span", "spout"]);
-    expect(full.filled.has("spout"), "它是满的").toBe(true);
+    const full = at("spring", 45, ["aqueduct"]);
+    expect(full.filled.has("aqueduct"), "它是满的").toBe(true);
     expect(canWalkTo(level1, full, "grandBasin"), "但这个角度下走不过去").toBe(false);
 
     const aligned = { ...full, config: { ...full.config, camera: 135 as Azimuth } };
@@ -181,30 +194,35 @@ describe("通关是大池被填满,不是水抵达", () => {
     }
   });
 
-  it("水只是漫到大池、渠没灌满,不算通关", () => {
-    const s = at("springB", 45);
+  it("水只是漫进渠里、没锚住两端,不算通关", () => {
+    const s = at("spring", 45);
     expect(finalPoolFull(level1, pour(level1, s))).toBe(false);
   });
 
   it("照着设计的流程走一遍能通关", () => {
-    // 出生点 → 走到泉眼 A → 引水造桥 → 踩水走到泉眼 B → 转视角 → 再引水。
+    // 只三步:走 → 引水(停住)→ 转相机 → 再引水。
     let s = begin(level1);
-    expect(canWalkTo(level1, s, "springA"), "第一段路本该是通的").toBe(true);
 
-    s = { ...s, beastAt: "springA" };
-    s = pour(level1, s);
-    expect(s.filled.has("span"), "引水没造出桥").toBe(true);
+    // 1. 走。第一段路任何角度都是通的,不需要解谜。
+    expect(canWalkTo(level1, s, "spring"), "第一段路本该是通的").toBe(true);
+    s = { ...s, beastAt: "spring" };
 
-    expect(canWalkTo(level1, s, "springB"), "桥造好了却过不去").toBe(true);
-    s = { ...s, beastAt: "springB" };
-
-    // 先试着直接引水:水会停在渠里,末端悬空。这一步是设计里要玩家看见的。
+    // 2. 引水。水动了,但停在渠里 —— 转折点。
     const stalled = pour(level1, s);
-    expect(halfFilled(level1, stalled)).toEqual(["spout"]);
+    expect(halfFilled(level1, stalled), "水该停在渠里").toEqual(["aqueduct"]);
+    expect(stalled.filled.size, "这一下不该灌满任何东西").toBe(0);
     expect(finalPoolFull(level1, stalled)).toBe(false);
 
+    // 3. 转相机。断开的那截接上了。
     s = turnCamera(stalled, CAMERA.azimuthsDeg);
+    expect(s.config.camera).toBe(135);
+
+    // 4. 再引水。渠灌满,大池填满。
     s = pour(level1, s);
+    expect(s.filled.has("aqueduct")).toBe(true);
     expect(finalPoolFull(level1, s), "转到对的视角再引水之后大池该满了").toBe(true);
+
+    // 而且现在渠面成了路,兽踩得过去。
+    expect(canWalkTo(level1, s, "grandBasin"), "灌满了却走不过去").toBe(true);
   });
 });

@@ -115,27 +115,14 @@ h1 {
   transform: translate(-50%, -50%);
 }
 
-/* The invitation: a turnable terrace breathes until it is turned. */
-.handle::after {
-  position: absolute;
-  border: 2px solid var(--lapis-dark);
-  border-radius: 50%;
-  animation: invite 1.9s ease-in-out infinite;
-  content: "";
-  inset: 16%;
-  opacity: 0.45;
-}
-
-/* 走得到的地方:实心一点,和「可以转的砖」区分开。 */
-.handle.walk::after {
-  border-style: dashed;
-  animation-duration: 2.6s;
-  opacity: 0.3;
-}
+/* 落点不画任何东西。
+   原本这里有一圈虚线,想表达「这儿能点」—— 但它自己说明不了自己,而且是叠在
+   画面上的 HUD,规格明令不做。改成纪念碑谷的办法:点哪儿走哪儿,能走就走,
+   不能走就没反应。按钮仍在 DOM 里(可聚焦、有名字),只是不画出来;
+   兽走过去这件事本身就是反馈。 */
 
 /* 兽正站在池子上 —— 此刻按空格有意义。整块画面轻轻呼吸一下,
    不写字,也不加 HUD。 */
-.attap .handle.pool::after,
 .attap canvas {
   animation: thirst 1.7s ease-in-out infinite;
 }
@@ -151,27 +138,10 @@ h1 {
   }
 }
 
+/* 键盘用户仍然需要看见焦点在哪。 */
 .handle:focus-visible {
   outline: 3px solid var(--lapis-dark);
   outline-offset: 2px;
-}
-
-.flowered .handle::after {
-  animation: none;
-  opacity: 0;
-}
-
-@keyframes invite {
-  0%,
-  100% {
-    opacity: 0.3;
-    transform: scale(0.9);
-  }
-
-  50% {
-    opacity: 0.8;
-    transform: scale(1.08);
-  }
 }
 
 .progress {
@@ -200,9 +170,8 @@ h1 {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .handle::after {
+  .attap canvas {
     animation: none;
-    opacity: 0.55;
   }
 
   .stage {

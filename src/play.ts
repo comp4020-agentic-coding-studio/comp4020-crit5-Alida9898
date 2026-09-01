@@ -58,10 +58,10 @@ export function mount(el: Elements): () => void {
    * 动画期间封锁输入,并且**把按钮全撤掉**:中间的每一个角度都在穿帮,
    * 那时候的拾取位置和连通判定都是没有意义的。
    */
-  function swing(): void {
+  function swing(direction: 1 | -1): void {
     if (locked) return;
     locked = true;
-    state = turnCamera(state, CAMERA.azimuthsDeg);
+    state = turnCamera(state, CAMERA.azimuthsDeg, direction);
     stage?.setCamera(state.config.camera);
     el.handles.replaceChildren();
     timer = setTimeout(() => {
@@ -120,6 +120,7 @@ export function mount(el: Elements): () => void {
       b.type = "button";
       const isPool = level.pools.some((p) => p.id === port);
       b.className = `handle walk${isPool ? " pool" : ""}`;
+      b.title = "";
       b.style.left = `${x * 100}%`;
       b.style.top = `${y * 100}%`;
       b.setAttribute("aria-label", port);
@@ -167,18 +168,26 @@ export function mount(el: Elements): () => void {
     placeHandles();
   }
 
-  // 点在建筑以外的地方 = 转相机。第一关兽只有两三个落点,其余画面全是「转」,
-  // 所以玩家一下就撞上这个动作。
-  el.stage.addEventListener("click", (e) => {
-    if ((e.target as HTMLElement).closest("button")) return;
-    swing();
-  });
-
-  // 空格引水。规格里唯一用到键盘的地方。
+  // 鼠标只管**建筑上的东西**:兽走哪儿、转哪块砖。相机归方向键。
+  //
+  // 三件事全挤在点击上时,玩家不知道自己点的是哪一个 —— 同一个动作有三种
+  // 后果,那就等于没有动作。分开之后:点 = 改变建筑,方向键 = 改变看它的方向。
+  // (拖拽不是选项:规格第七条明令不做拖拽。)
   const onKey = (e: KeyboardEvent): void => {
-    if (e.code !== "Space" && e.key !== " ") return;
-    e.preventDefault();
-    draw();
+    if (e.code === "Space" || e.key === " ") {
+      e.preventDefault();
+      draw();
+      return;
+    }
+    if (e.code === "ArrowLeft" || e.key === "ArrowLeft") {
+      e.preventDefault();
+      swing(-1);
+      return;
+    }
+    if (e.code === "ArrowRight" || e.key === "ArrowRight") {
+      e.preventDefault();
+      swing(1);
+    }
   };
   window.addEventListener("keydown", onKey);
 

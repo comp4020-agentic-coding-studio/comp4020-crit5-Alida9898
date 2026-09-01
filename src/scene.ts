@@ -139,11 +139,7 @@ function colonnade(size: number, height: number): Group {
 
 /** 一段砖砌水渠:两道侧壁夹着一条水。水是独立的物体,不是把渠染蓝 —— 后者
  *  会让水淹掉砖,读起来就不再是「某个东西里面的水」。 */
-function channel(
-  from: Vec3,
-  to: Vec3,
-  stepped = false,
-): { group: Group; water: Mesh; half: Mesh } {
+function channel(from: Vec3, to: Vec3): { group: Group; water: Mesh; half: Mesh } {
   const g = new Group();
   const dx = to[0] - from[0];
   const dz = to[2] - from[2];
@@ -199,33 +195,6 @@ function channel(
   );
   half.visible = false;
   g.add(half);
-
-  // 阶梯渠:几级砌上去的台阶,末端悬在空中。台阶要有可见的踏面和竖板,
-  // 不能用斜面代替 —— 玩家得看出「这是一段路,只是够不着」。
-  if (stepped) {
-    for (let i = 0; i < 3; i++) {
-      const t = 0.24 + i * 0.26;
-      const rise = FORM.stepRise * (i + 1);
-      const tread = new Mesh(
-        new BoxGeometry(FORM.channelWidth + 0.12, 0.07, FORM.stepTread),
-        lambert(PALETTE.sandstone.light),
-      );
-      tread.rotation.y = angle;
-      tread.position.set(from[0] + dx * t, mid[1] + rise, from[2] + dz * t);
-      g.add(tread);
-      const riser = new Mesh(
-        new BoxGeometry(FORM.channelWidth + 0.12, rise, 0.06),
-        lambert(PALETTE.sandstone.dark),
-      );
-      riser.rotation.y = angle;
-      riser.position.set(
-        from[0] + dx * (t - 0.12),
-        mid[1] + rise / 2,
-        from[2] + dz * (t - 0.12),
-      );
-      g.add(riser);
-    }
-  }
 
   return { group: g, water, half };
 }
@@ -436,27 +405,49 @@ export function createStage(canvas: HTMLCanvasElement, level: Level, layout: Lay
   for (const c of level.channels) {
     const place = layout.ports[c.id];
     if (!place || !("from" in place)) continue;
-    // 通向终点大池的那一段做成阶梯 —— 它是这一关唯一「够不着」的东西,
-    // 得一眼看出来是条路。
-    const leadsToFinal = c.ends.some((e) => level.pools.find((p) => p.id === e)?.isFinal);
-    const built = channel(place.from, place.to, leadsToFinal);
+    const built = channel(place.from, place.to);
     waters.set(c.id, { full: built.water, half: built.half });
     mount(built.group, place);
     pieces.set(c.id, built.group);
   }
 
   // 兽:占位造型。穆什胡什的浮雕留到后面。
+  // 幼年的穆什胡什:小,圆,头大身子短 —— 头身比大是幼体的特征,也是「可爱」
+  // 的来源。造型仍是占位,但尺度定下来了。
   const beast = new Group();
   {
-    const body = new Mesh(new BoxGeometry(0.2, 0.26, 0.34), lambert(PALETTE.ochre.mid));
-    body.position.y = 0.2;
+    const body = new Mesh(new SphereGeometry(0.085, 12, 10), lambert(PALETTE.ochre.mid));
+    body.scale.set(1, 0.9, 1.25);
+    body.position.y = 0.085;
     beast.add(body);
-    const head = new Mesh(new SphereGeometry(0.12, 10, 8), lambert(PALETTE.ochre.light));
-    head.position.set(0, 0.4, 0.16);
+
+    const head = new Mesh(new SphereGeometry(0.072, 12, 10), lambert(PALETTE.ochre.light));
+    head.position.set(0, 0.17, 0.07);
     beast.add(head);
-    const tail = new Mesh(new BoxGeometry(0.06, 0.06, 0.24), lambert(PALETTE.ochre.dark));
-    tail.position.set(0, 0.26, -0.26);
+
+    // 蛇头的吻部,压扁一点点。
+    const snout = new Mesh(new SphereGeometry(0.036, 8, 8), lambert(PALETTE.ochre.light));
+    snout.scale.set(0.8, 0.7, 1.4);
+    snout.position.set(0, 0.15, 0.14);
+    beast.add(snout);
+
+    // 蝎尾:向上翘,幼体的尾巴短。
+    const tail = new Mesh(new CylinderGeometry(0.012, 0.026, 0.13, 6), lambert(PALETTE.ochre.dark));
+    tail.rotation.x = -0.7;
+    tail.position.set(0, 0.13, -0.1);
     beast.add(tail);
+
+    // 四条短腿。
+    for (const [lx, lz] of [
+      [0.045, 0.06],
+      [-0.045, 0.06],
+      [0.045, -0.06],
+      [-0.045, -0.06],
+    ]) {
+      const leg = new Mesh(new CylinderGeometry(0.016, 0.014, 0.07, 6), lambert(PALETTE.ochre.dark));
+      leg.position.set(lx, 0.035, lz);
+      beast.add(leg);
+    }
   }
   world.add(beast);
 
@@ -485,10 +476,17 @@ export function createStage(canvas: HTMLCanvasElement, level: Level, layout: Lay
     }
   }
 
+  let beastWant: Vec3 | null = null;
+  let beastShown: Vec3 | null = null;
+
   function setBeast(port: PortId): void {
     const place = layout.ports[port];
     if (!place || !("at" in place)) return;
-    beast.position.set(place.at[0], place.at[1] + FORM.terraceBody / 2, place.at[2]);
+    beastWant = [place.at[0], place.at[1] + FORM.terraceBody / 2 + FORM.terraceSlab, place.at[2]];
+    if (!beastShown) {
+      beastShown = [...beastWant];
+      beast.position.set(...beastShown);
+    }
   }
 
   setTurns(level.opens.turns);
@@ -501,6 +499,24 @@ export function createStage(canvas: HTMLCanvasElement, level: Level, layout: Lay
   return {
     render: () => renderer.render(scene, camera),
     step: (dt) => {
+      // 兽走过去,不是瞬移。这一段位移就是「你点的那一下起作用了」的反馈,
+      // 而这一关没有任何文字或 HUD 来说这件事。
+      if (beastWant && beastShown) {
+        const k = Math.min(1, dt * 7);
+        let moving = false;
+        for (let i = 0; i < 3; i++) {
+          const d = beastWant[i] - beastShown[i];
+          if (Math.abs(d) > 0.001) moving = true;
+          beastShown[i] += d * k;
+        }
+        if (moving) {
+          // 走的时候微微起伏,像迈步。
+          const bob = Math.sin(performance.now() / 90) * 0.03;
+          beast.position.set(beastShown[0], beastShown[1] + bob, beastShown[2]);
+        } else {
+          beast.position.set(...beastShown);
+        }
+      }
       if (Math.abs(azShown - azWant) > 0.01) {
         // 走最短的一边转过去。中间的每一个角度都必然穿帮 —— 那正是这段动画
         // 存在的意义:把穿帮藏进去。

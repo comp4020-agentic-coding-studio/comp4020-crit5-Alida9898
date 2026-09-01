@@ -76,9 +76,14 @@ export function begin(level: Level): State {
 
 /** 转相机:切到枚举里的下一个方位角。建筑一动不动,动的是看它的方向 ——
  *  而「看起来接上了就是接上了」,所以这一下会改变连通。 */
-export function turnCamera(state: State, azimuths: readonly Azimuth[]): State {
+export function turnCamera(
+  state: State,
+  azimuths: readonly Azimuth[],
+  direction: 1 | -1 = 1,
+): State {
   const i = azimuths.indexOf(state.config.camera);
-  const next = azimuths[(i + 1) % azimuths.length];
+  const n = azimuths.length;
+  const next = azimuths[(((i + direction) % n) + n) % n];
   return { ...state, config: { ...state.config, camera: next } };
 }
 
