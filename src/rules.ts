@@ -10,7 +10,8 @@ export type PortId = string;
 export type PartId = string;
 export type Turn = 0 | 1 | 2 | 3;
 
-export type Pool = { id: PortId; isSource?: boolean; isFinal?: boolean };
+/** `isSource` 不再存在:任何池子都能当水源,取决于兽站在哪一个上面。 */
+export type Pool = { id: PortId; isFinal?: boolean; grand?: boolean };
 export type Channel = { id: PortId; ends: [PortId, PortId] };
 export type Platform = { id: PortId };
 export type TapPoint = { id: PortId; on: PortId };
@@ -27,7 +28,18 @@ export type Config = { camera: Azimuth; turns: Record<PartId, Turn> };
  */
 export type When = { camera?: Azimuth; turns?: Partial<Record<PartId, Turn>> };
 
+/** 可行走的连接。无向 —— 兽本来就能原路走回去。 */
 export type Link = { between: [PortId, PortId]; when: When };
+
+/**
+ * 水路的连接。**有向**:水只从 `from` 流向 `to`。
+ *
+ * 方向必须写在数据里,不能在运行时比较屏幕高度 —— 那就成了几何运算,架构约束
+ * 明令禁止。而它又非有不可:任何池子都能当水源,一旦从下游的池子引水,无向的
+ * 边会让水倒着流回上游。作者在写这张表时保证 `to` 在画面上确实更低,
+ * `spec/iso.test.ts` 把每一条都投影核对一遍。
+ */
+export type Flow = { from: PortId; to: PortId; when: When };
 
 export type Level = {
   name: string;
@@ -37,8 +49,8 @@ export type Level = {
   tapPoints: TapPoint[];
   /** 可转的砖块。 */
   parts: PartId[];
-  /** 看起来水路相连的端口对。 */
-  waterLinks: Link[];
+  /** 看起来水路相连的端口对,有向。 */
+  waterLinks: Flow[];
   /** 看起来可以走过去的端口对。引用了渠的,只在该渠灌满后生效(规则 5)。 */
   walkLinks: Link[];
   /** 开局的配置。 */
@@ -97,35 +109,43 @@ function neighbours(links: [PortId, PortId][], from: PortId): PortId[] {
   return out;
 }
 
-/**
- * 规则 3:兽站在取水点上,水才流。
- *
- * 完全没有取水点的关卡,水从第一帧就在流。
- */
-export function sourcesRunning(level: Level, state: State): boolean {
-  if (level.tapPoints.length === 0) return true;
-  return level.tapPoints.some((tap) => tap.id === state.beastAt);
+/** 水的下游邻居。只看 from → to,所以水绝不会倒流。 */
+function downstream(level: Level, config: Config, from: PortId): PortId[] {
+  return level.waterLinks
+    .filter((f) => f.from === from && holds(f.when, config))
+    .map((f) => f.to);
+}
+
+/** 兽此刻是不是正站在一个池子上 —— 能不能引水,就看这个。 */
+export function standingOnPool(level: Level, state: State): PortId | null {
+  const at = state.beastAt;
+  if (!at) return null;
+  return level.pools.some((p) => p.id === at) ? at : null;
 }
 
 /**
- * 规则 1、2:当前配置下,水漫得到哪些端口。
+ * 规则 1、2:从某个池子放水,能漫到哪些端口。
+ *
+ * 只沿声明的 from → to 走,所以水绝不会往回爬。没有几何运算,只有查表。
  */
-export function reachable(level: Level, state: State): Set<PortId> {
+export function reachableFrom(level: Level, state: State, source: PortId): Set<PortId> {
   const wet = new Set<PortId>();
-  if (!sourcesRunning(level, state)) return wet;
-
-  const links = liveLinks(level.waterLinks, state.config);
-  const queue = level.pools.filter((p) => p.isSource).map((p) => p.id);
-
+  const queue = [source];
   while (queue.length > 0) {
     const here = queue.shift();
     if (here === undefined || wet.has(here)) continue;
     wet.add(here);
-    for (const next of neighbours(links, here)) {
+    for (const next of downstream(level, state.config, here)) {
       if (!wet.has(next)) queue.push(next);
     }
   }
   return wet;
+}
+
+/** 兽现在站的池子放出的水,漫到哪儿。没站在池子上就哪儿也不漫。 */
+export function reachable(level: Level, state: State): Set<PortId> {
+  const source = standingOnPool(level, state);
+  return source ? reachableFrom(level, state, source) : new Set<PortId>();
 }
 
 /** 规则 4:两端都锚到池子的渠 —— 这些会灌满。 */
@@ -140,7 +160,7 @@ export function fillingNow(level: Level, state: State): PortId[] {
  * 水进去了、但只有一端锚住的渠。
  *
  * 这是一个合法且重要的可见状态 —— 水停在渠里,末端悬空。
- * **不要加逻辑去阻止它发生。**
+ * **不要加逻辑去阻止它发生,也不要在这种情况下弹提示。**
  */
 export function halfFilled(level: Level, state: State): PortId[] {
   const wet = reachable(level, state);
@@ -150,12 +170,20 @@ export function halfFilled(level: Level, state: State): PortId[] {
     .map((c) => c.id);
 }
 
-/** 规则 4:灌满不可逆,所以这里只加不减。 */
-export function settle(level: Level, state: State): State {
+/**
+ * 按空格:从兽脚下的池子放水。
+ *
+ * 规则 4:灌满不可逆,所以这里只加不减 —— 之后再怎么转砖块,已经灌满的渠
+ * 也不会变空。
+ */
+export function pour(level: Level, state: State): State {
   const filled = new Set(state.filled);
   for (const id of fillingNow(level, state)) filled.add(id);
   return { ...state, filled };
 }
+
+/** 保留旧名字,行为同 `pour`。 */
+export const settle = pour;
 
 /**
  * 规则 5:当前配置下、以现有的灌满情况,兽走得到哪里。

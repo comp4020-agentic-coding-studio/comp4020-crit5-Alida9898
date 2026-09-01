@@ -112,15 +112,27 @@ describe("每条声明的 link,模型都真的摆成了那样", () => {
 
       it("声明看起来接着的,投影后确实接在一起", () => {
         for (const config of configurations(level)) {
-          for (const link of [...level.waterLinks, ...level.walkLinks]) {
-            if (!holds(link.when, config)) continue;
-            const [a, b] = link.between;
+          // 水路和步行路要求的是**同一段几何上的两个不同判定**,规格特意点明了
+          // 这一点。渠口接池子必须像素级重合,否则水就是凭空跳过去的;而两块
+          // 相邻的地砖只要挨着,兽迈一步就过去了。用同一个阈值卡两者,要么把
+          // 正常的路判成错,要么把没对上的渠放过去。
+          for (const f of level.waterLinks) {
+            if (!holds(f.when, config)) continue;
+            const d = gap(layout, f.from, f.to, config);
+            expect(
+              d,
+              `${level.name}: 声明水从 ${f.from} 流到 ${f.to},但两端差 ${d.toFixed(2)}`,
+            ).toBeLessThan(0.05);
+          }
+          for (const l of level.walkLinks) {
+            if (!holds(l.when, config)) continue;
+            const [a, b] = l.between;
             const d = gap(layout, a, b, config);
             expect(
               d,
-              `${level.name}: 声明 ${a}–${b} 在 ${JSON.stringify(config.turns)} 下接着,` +
-                `但模型里它们差 ${d.toFixed(2)}`,
-            ).toBeLessThan(0.05);
+              `${level.name}: 声明可以从 ${a} 走到 ${b},但它们在画面上差 ${d.toFixed(2)},` +
+                `隔得太远,读不出是相邻的`,
+            ).toBeLessThan(1.0);
           }
         }
       });
@@ -131,7 +143,7 @@ describe("每条声明的 link,模型都真的摆成了那样", () => {
         for (const config of configurations(level)) {
           for (const link of level.waterLinks) {
             if (holds(link.when, config)) continue;
-            const [a, b] = link.between;
+            const [a, b] = [link.from, link.to];
             const d = gap(layout, a, b, config);
             expect(
               d,
@@ -146,29 +158,18 @@ describe("每条声明的 link,模型都真的摆成了那样", () => {
         // 规则 2。表格是无向的,方向由「从源开始漫」决定,所以跟着漫一遍,
         // 确认每一步都没有把水往上送。
         for (const config of configurations(level)) {
-          const links = level.waterLinks
-            .filter((l) => holds(l.when, config))
-            .map((l) => l.between);
           const screenY = (id: string): number[] =>
             anchorsOf(layout.ports[id], layout, config.turns).map(
               (p) => project(p, config.camera)[1],
             );
-
-          const seen = new Set<string>();
-          const queue = level.pools.filter((p) => p.isSource).map((p) => p.id);
-          while (queue.length > 0) {
-            const here = queue.shift();
-            if (here === undefined || seen.has(here)) continue;
-            seen.add(here);
-            for (const [a, b] of links) {
-              const next = a === here ? b : b === here ? a : null;
-              if (next === null || seen.has(next)) continue;
-              expect(
-                Math.min(...screenY(next)),
-                `${level.name}: 水从 ${here} 流到 ${next} 是在往画面上方爬`,
-              ).toBeLessThanOrEqual(Math.max(...screenY(here)) + 1e-6);
-              queue.push(next);
-            }
+          // 有向表,所以直接逐条核对:声明的 to 必须真的在画面上更低。
+          // 作者写方向,传感器盯着他有没有写反。
+          for (const flow of level.waterLinks) {
+            if (!holds(flow.when, config)) continue;
+            expect(
+              Math.min(...screenY(flow.to)),
+              `${level.name}: 声明水从 ${flow.from} 流到 ${flow.to},但 ${flow.to} 在画面上更高`,
+            ).toBeLessThanOrEqual(Math.max(...screenY(flow.from)) + 1e-6);
           }
         }
       });

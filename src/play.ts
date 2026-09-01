@@ -13,9 +13,11 @@ import {
   canWalkTo,
   finalPoolFull,
   halfFilled,
+  pour,
   reachable,
-  settle,
+  standingOnPool,
   turn,
+  walkableFrom,
 } from "./rules.ts";
 import type { Stage } from "./scene.ts";
 import { createStage } from "./scene.ts";
@@ -41,13 +43,20 @@ export function mount(el: Elements): () => void {
     stage?.setWater(state.filled, halfFilled(level, state), reachable(level, state));
   }
 
-  /** 一次转动之后重新判定。**动画期间不判定** —— 中间状态必然穿帮。 */
+  /** 只重画,不引水 —— 水只在按空格时流(规则 3)。 */
   function resolve(): void {
-    state = settle(level, state);
     paintWater();
-    if (finalPoolFull(level, state)) {
-      el.stage.classList.add("flowered");
-    }
+    el.stage.classList.toggle("flowered", finalPoolFull(level, state));
+    el.stage.classList.toggle("attap", standingOnPool(level, state) !== null);
+  }
+
+  /** 空格:从兽脚下的池子放水。不站在池子上就什么也不发生。 */
+  function draw(): void {
+    if (locked) return;
+    if (standingOnPool(level, state) === null) return;
+    state = pour(level, state);
+    resolve();
+    placeHandles();
   }
 
   function act(part: PartId): void {
@@ -80,20 +89,23 @@ export function mount(el: Elements): () => void {
       buttons.push(b);
     }
 
-    // 兽走得到的地方,也是可点的。第一关一个都没有。
-    for (const platform of level.platforms) {
-      if (!canWalkTo(level, state, platform.id)) continue;
-      const { x, y } = stage?.toScreen(platform.id) ?? { x: 0.5, y: 0.5 };
+    // 兽此刻走得到的每一处,都是可点的:地砖、泉眼,以及已经灌满的水渠。
+    const here = state.beastAt;
+    const reach = here ? walkableFrom(level, state, here) : new Set<string>();
+    for (const port of reach) {
+      if (port === here) continue;
+      const { x, y } = stage?.toScreen(port) ?? { x: 0.5, y: 0.5 };
       const b = document.createElement("button");
       b.type = "button";
-      b.className = "handle walk";
+      const isPool = level.pools.some((p) => p.id === port);
+      b.className = `handle walk${isPool ? " pool" : ""}`;
       b.style.left = `${x * 100}%`;
       b.style.top = `${y * 100}%`;
-      b.setAttribute("aria-label", `平台 ${platform.id}`);
+      b.setAttribute("aria-label", port);
       b.addEventListener("click", () => {
         if (locked) return;
-        state = { ...state, beastAt: platform.id };
-        stage?.setBeast(platform.id);
+        state = { ...state, beastAt: port };
+        stage?.setBeast(port);
         resolve();
         placeHandles();
       });
@@ -134,6 +146,14 @@ export function mount(el: Elements): () => void {
     placeHandles();
   }
 
+  // 空格引水。规格里唯一用到键盘的地方。
+  const onKey = (e: KeyboardEvent): void => {
+    if (e.code !== "Space" && e.key !== " ") return;
+    e.preventDefault();
+    draw();
+  };
+  window.addEventListener("keydown", onKey);
+
   const observer = new ResizeObserver(resize);
   observer.observe(el.stage);
 
@@ -151,6 +171,7 @@ export function mount(el: Elements): () => void {
   return () => {
     if (timer !== undefined) clearTimeout(timer);
     cancelAnimationFrame(frame);
+    window.removeEventListener("keydown", onKey);
     observer.disconnect();
     stage?.dispose();
   };

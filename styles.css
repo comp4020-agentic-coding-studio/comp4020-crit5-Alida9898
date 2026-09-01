@@ -126,6 +126,31 @@ h1 {
   opacity: 0.45;
 }
 
+/* 走得到的地方:实心一点,和「可以转的砖」区分开。 */
+.handle.walk::after {
+  border-style: dashed;
+  animation-duration: 2.6s;
+  opacity: 0.3;
+}
+
+/* 兽正站在池子上 —— 此刻按空格有意义。整块画面轻轻呼吸一下,
+   不写字,也不加 HUD。 */
+.attap .handle.pool::after,
+.attap canvas {
+  animation: thirst 1.7s ease-in-out infinite;
+}
+
+@keyframes thirst {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+
+  50% {
+    filter: brightness(1.045);
+  }
+}
+
 .handle:focus-visible {
   outline: 3px solid var(--lapis-dark);
   outline-offset: 2px;

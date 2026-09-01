@@ -84,21 +84,29 @@ function channel(from: Vec3, to: Vec3): { group: Group; water: Mesh; half: Mesh 
 
   const mid: Vec3 = [(from[0] + to[0]) / 2, (from[1] + to[1]) / 2, (from[2] + to[2]) / 2];
 
-  const trough = new Mesh(
-    new BoxGeometry(FORM.channelWidth, FORM.channelWall * 1.6, span),
-    lambert(PALETTE.sandstone.mid),
-  );
-  trough.rotation.y = angle;
-  trough.position.set(...mid);
-  g.add(trough);
-
-  const lip = new Mesh(
-    new BoxGeometry(FORM.channelWidth + 0.06, FORM.channelWall * 0.5, span),
+  // 空渠必须看得出是「一条潜在的路,只是现在是空的」:两道立起来的边墙夹着
+  // 一条凹下去的槽底。没有这个轮廓,断口那头就只是一片虚空,玩家不会想到
+  // 「这里本来能过」—— 这个形状替代了文字教程。
+  const floor = new Mesh(
+    new BoxGeometry(FORM.channelWidth, FORM.channelWall * 0.7, span),
     lambert(PALETTE.sandstone.dark),
   );
-  lip.rotation.y = angle;
-  lip.position.set(mid[0], mid[1] - FORM.channelWall, mid[2]);
-  g.add(lip);
+  floor.rotation.y = angle;
+  floor.position.set(mid[0], mid[1] - FORM.channelWall * 0.5, mid[2]);
+  g.add(floor);
+
+  for (const side of [-1, 1]) {
+    const wall = new Mesh(
+      new BoxGeometry(FORM.channelWall, FORM.channelWall * 2.1, span),
+      lambert(PALETTE.sandstone.mid),
+    );
+    wall.rotation.y = angle;
+    // 边墙沿着渠的法线方向让开半个渠宽。
+    const nx = Math.cos(angle) * side * (FORM.channelWidth / 2);
+    const nz = -Math.sin(angle) * side * (FORM.channelWidth / 2);
+    wall.position.set(mid[0] + nx, mid[1] + FORM.channelWall * 0.25, mid[2] + nz);
+    g.add(wall);
+  }
 
   // 灌满的水:整条。
   const water = new Mesh(
@@ -251,14 +259,35 @@ export function createStage(canvas: HTMLCanvasElement, level: Level, layout: Lay
     const place = layout.ports[pool.id];
     if (!place || !("at" in place)) continue;
     const g = new Group();
-    g.add(terrace(FORM.terraceSize, pool.isFinal ? "ochre" : "sandstone"));
-    // 池子里的水面。终点池开局是空的,水位随灌注上涨。
+    // 终点大池:更大、更精致、带一圈装饰角柱 —— 玩家一眼认得出目标在哪。
+    const scale = pool.grand ? 1.5 : 1;
+    g.add(terrace(FORM.terraceSize * scale, pool.grand ? "ochre" : "sandstone"));
+    if (pool.grand) {
+      for (const [cx, cz] of [
+        [1, 1],
+        [1, -1],
+        [-1, 1],
+        [-1, -1],
+      ]) {
+        const post = new Mesh(
+          new CylinderGeometry(0.075, 0.09, 0.42, 8),
+          lambert(PALETTE.ochre.light),
+        );
+        post.position.set(
+          (cx * FORM.terraceSize * scale) / 2.4,
+          FORM.terraceBody / 2 + 0.21,
+          (cz * FORM.terraceSize * scale) / 2.4,
+        );
+        g.add(post);
+      }
+    }
+    // 池子里的水面。泉眼一直有水;终点大池开局是空的。
     const w = new Mesh(
-      new BoxGeometry(FORM.terraceSize * 0.62, 0.16, FORM.terraceSize * 0.62),
+      new BoxGeometry(FORM.terraceSize * scale * 0.62, 0.16, FORM.terraceSize * scale * 0.62),
       lambert(PALETTE.lapis.mid),
     );
     w.position.y = FORM.terraceBody / 2 + 0.02;
-    w.visible = Boolean(pool.isSource);
+    w.visible = !pool.isFinal;
     g.add(w);
     poolWater.set(pool.id, w);
     g.position.set(...place.at);
@@ -313,8 +342,8 @@ export function createStage(canvas: HTMLCanvasElement, level: Level, layout: Lay
     }
     for (const [id, w] of poolWater) {
       const pool = level.pools.find((p) => p.id === id);
-      if (pool?.isSource) continue;
-      w.visible = wet.has(id);
+      // 泉眼本来就是有水的;只有终点大池要等水灌进来。
+      w.visible = pool?.isFinal ? wet.has(id) : true;
     }
   }
 

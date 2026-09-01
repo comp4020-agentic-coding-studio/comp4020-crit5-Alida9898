@@ -1,64 +1,87 @@
-// 第一关 · 只有水
+// 第一关 · 引水造桥
 //
-// 教规则 1(转砖块改变连通)与规则 2(两端都得接上,水才过得去)。
+// 流程:出生点 →(通的砖路)→ 泉眼 → 空格引水 → 渠灌满成桥 → 踩水过桥 →
+// 转一块砖接上对面 → 水填满终点大池。
 //
-// 兽在场,但不需要玩家操作:它开局就站在取水点上,水已经在流。规则 3 在这一关
-// 是被「看见」的,不是被「要求」的 —— 玩家先看到兽站着水就流,第二关才轮到他
-// 自己把兽送上去。walkLinks 全空,所以唯一能点的就是那块砖。
+// 教学意图:前半段只教「饮水造桥」这一个动词,最后才第一次出现「转砖块」。
+// 两件事各教一次,都简单到不算谜题。
+//
+// 空渠 c1 横跨断口,两头都接着地面 —— 玩家在没水的时候就该看出「这是一条
+// 潜在的路,只是现在是空的」。那个视觉暗示替代文字教程。
 
 import type { Layout } from "../iso.ts";
 import type { Level } from "../rules.ts";
 
 export const level1: Level = {
-  name: "只有水",
+  name: "引水造桥",
 
   pools: [
-    { id: "sourcePool", isSource: true },
-    { id: "finalPool", isFinal: true },
+    { id: "springA" },
+    { id: "springB" },
+    // 终点大池:更大、更精致,一眼认得出。
+    { id: "grandBasin", isFinal: true, grand: true },
   ],
 
-  channels: [{ id: "aqueduct", ends: ["sourcePool", "finalPool"] }],
+  channels: [
+    // 第一道渠:两头分别锚在两个泉眼上,所以引水就能灌满 —— 这是「造桥」。
+    { id: "span", ends: ["springA", "springB"] },
+    // 第二道渠骑在可转的砖上,转正之前它的下游端谁也接不到。
+    { id: "spout", ends: ["springB", "grandBasin"] },
+  ],
 
-  platforms: [{ id: "sourceLedge" }], // 兽站的台子
+  platforms: [{ id: "birth" }, { id: "walkway" }],
 
-  tapPoints: [{ id: "tap1", on: "sourceLedge" }],
+  // 不再需要:任何池子都能当水源,看兽站在哪一个上面。
+  tapPoints: [],
 
-  parts: ["spur"],
+  parts: ["elbow"],
 
+  // 有向。水只往画面下方走,方向写在数据里而不是运行时算出来。
   waterLinks: [
-    // 渠的上游口只在这块砖转正时对上源池。这是这一关唯一的谜题。
-    { between: ["sourcePool", "aqueduct"], when: { turns: { spur: 0 } } },
-    // 下游口锚在轴心上,砖怎么转它都不动,所以永远对着终点池。
-    { between: ["aqueduct", "finalPool"], when: {} },
+    { from: "springA", to: "span", when: {} },
+    { from: "span", to: "springB", when: {} },
+    { from: "springB", to: "spout", when: {} },
+    // 只有砖转正,渠口才接得上大池。转正之前从 springB 引水,水会流进 spout
+    // 然后停在那儿,末端悬空 —— 那是允许发生的可见状态。
+    { from: "spout", to: "grandBasin", when: { turns: { elbow: 0 } } },
   ],
 
-  walkLinks: [],
+  // 无向。提到渠的那两条,只有该渠灌满之后才生效(规则 5)。
+  walkLinks: [
+    { between: ["birth", "walkway"], when: {} },
+    { between: ["walkway", "springA"], when: {} },
+    { between: ["springA", "span"], when: {} },
+    { between: ["span", "springB"], when: {} },
+    { between: ["springB", "spout"], when: {} },
+    { between: ["spout", "grandBasin"], when: { turns: { elbow: 0 } } },
+  ],
 
-  // 开局就站在取水点上 —— 水从第一帧就在流,只是流不过去。
-  beastAt: "tap1",
+  beastAt: "birth",
 
-  opens: { camera: 45, turns: { spur: 3 } },
+  opens: { camera: 45, turns: { elbow: 3 } },
 };
 
 /**
- * 每个 port 摆在哪。和上面的拓扑分开放,所以 `rules.ts` 完全不认识坐标。
+ * 摆放。逻辑锚点是每个 port 的中心;渲染时水渠会两头各缩短一点,好让它读成
+ * 「从池边到池边」而不是插进池心。
  *
- * 坐标照着等距投影的一条性质选:在 45° 下,沿 (1,1,1) 走屏幕位置一动不动。
- * 所以 (1,1,1) 和 (0,0,0) 是同一个像素、差着一层楼;(4,2,4) 和 (3,1,3) 也是。
- * 水看着平平地流过去,其实爬了两层。`spec/iso.test.ts` 会把每条声明投影核对。
+ * spout 的下游口 (2,0,8) 与大池 (3,1,9) 差一个隐身方向 —— 屏幕上同一点、
+ * 空间里高一层。转正的那一下,水就爬上去了。
  */
 export const level1Layout: Layout = {
   pivots: {
-    // 渠的下游口就是轴心 —— 转动时它待在原地,只有上游口划过去。
-    spur: [2, 1, 2],
+    // 轴心就是 spout 的上游口:转动时它待在 springB 上不动,只有下游口划过去。
+    elbow: [1, 0, 3],
   },
   ports: {
-    sourcePool: { at: [0, 0, 0] },
-    sourceLedge: { at: [1.6, 0, -0.6] },
-    tap1: { at: [1.6, 0, -0.6] },
-    // 上游口 (1,1,1) 与源池 (0,0,0) 差一个隐身方向 —— 同一个像素,差一层楼。
-    // 下游口 (2,1,2) 与终点池 (3,2,3) 也是。水看着平平地流,其实爬了两层。
-    aqueduct: { from: [1, 1, 1], to: [2, 1, 2], part: "spur" },
-    finalPool: { at: [3, 2, 3] },
+    // 相邻的地砖间距 1 —— 也就是一块砖的宽度,紧挨着,兽一步迈过去。
+    birth: { at: [0, 0, 0] },
+    walkway: { at: [1, 0, 0] },
+    springA: { at: [1, 0, 1] },
+    // 断口在 z=2:那里什么也没有,空渠横跨过去。
+    span: { from: [1, 0, 1], to: [1, 0, 3] },
+    springB: { at: [1, 0, 3] },
+    spout: { from: [1, 0, 3], to: [1, 0, 4], part: "elbow" },
+    grandBasin: { at: [2, 1, 5] },
   },
 };
