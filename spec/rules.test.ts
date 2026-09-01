@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { level1 } from "../src/levels/level1.ts";
+import { level2 } from "../src/levels/level2.ts";
 import type { Azimuth } from "../src/config/style.ts";
 import type { Level, PortId, State } from "../src/rules.ts";
 import {
@@ -23,7 +24,7 @@ import { CAMERA } from "../src/config/style.ts";
 // 以及灌满不可逆而可行走**是**可逆的。谁哪天想把「满」和「通」合并成一个布尔,
 // 会在这里被拦下来。
 
-const LEVELS: Level[] = [level1];
+const LEVELS: Level[] = [level1, level2];
 
 // 开局角度、以及「解开」的那个角度,都从关卡数据里读出来,不写死。
 //
@@ -57,6 +58,7 @@ describe("数据本身自洽", () => {
         ...level.pools.map((p) => p.id),
         ...level.channels.map((c) => c.id),
         ...level.platforms.map((p) => p.id),
+        ...level.steps.map((st) => st.id),
       ]);
       for (const f of level.waterLinks) {
         expect(known, `${level.name}: ${f.from}`).toContain(f.from);
@@ -132,6 +134,7 @@ describe("规则 3:兽站在池子上,水才流", () => {
         { from: "lower", to: "low", when: {} },
       ],
       walkLinks: [],
+      steps: [],
       opens: { camera: 45, turns: {} },
     };
     const fromMid = reachable(twoWay, { ...begin(twoWay), beastAt: "mid" });

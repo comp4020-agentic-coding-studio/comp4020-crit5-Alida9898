@@ -77,6 +77,9 @@ export const INPUT = {
   /** 点击落点上那圈涟漪荡开的时长。它是「我点的是这里」的全部回执 ——
    *  兽要走一段才到,中间这段空白不填,点击就像没被收到。 */
   rippleMs: 520,
+  /** 通关之后停多久再进下一关。喷泉喷水是唯一的通关反馈,不给它时间
+   *  等于没给反馈;但停太久玩家会以为卡住了。 */
+  nextLevelMs: 2600,
 } as const;
 
 export const RENDER = {
@@ -111,9 +114,13 @@ export const FORM = {
   /** 檐口比主体每边宽出这么多。§3.5:「略宽于主体」。 */
   corniceOverhang: 0.045 * TILE,
   corniceHeight: 0.1 * TILE,
-  /** Steps are built, not ramped: each one has a real riser and tread. */
-  stepRise: 0.16 * TILE,
-  stepTread: 0.26 * TILE,
+  /** 一段楼梯切成几级。§3.5:「要有可见的厚度,绝不许拿斜坡冒充」——
+   *  级数固定,每一级的高和进深由关卡数据给的起止点算出来,所以同一段楼梯
+   *  跨一层还是两层都自洽。
+   *
+   *  原来这里是 `stepRise` / `stepTread` 两个绝对尺寸,从来没人用过:楼梯
+   *  跨多高是关卡数据说的,写死一级的高度就等于要求所有楼梯一样高。 */
+  stepCount: 6,
 
   /** §3.5:池子直径 0.8 TILE。渠道从池沿起画而不是从池心起,用的就是这同一个
    *  数 —— 不是另起一个看着顺眼的比例(那正是 0.42 这个坑的成因)。 */

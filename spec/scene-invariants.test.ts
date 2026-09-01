@@ -14,8 +14,10 @@
 import { Box3, BoxGeometry, CylinderGeometry, Mesh, Scene, SphereGeometry } from "three";
 import { describe, expect, it } from "vitest";
 import { level1, level1Layout } from "../src/levels/level1.ts";
+import { level2, level2Layout } from "../src/levels/level2.ts";
 import type { Layout } from "../src/iso.ts";
 import type { Level } from "../src/rules.ts";
+import { FORM } from "../src/config/style.ts";
 import { buildWorld } from "../src/scene.ts";
 
 /** §3.1:一个 tile = 一个 Three.js 世界单位。全项目没有第二个换算比。 */
@@ -48,6 +50,10 @@ const BUDGET = {
    *  没有 HUD、没有文字的游戏里就是全部的目标指示。下层那口内嵌的池子一点
    *  没动,「水面低于池沿」那条不变量量的仍然是它。 */
   grandExtra: 9,
+  /** 一段楼梯 = `FORM.stepCount` 级实心踏步。§3.5:「要有可见的厚度,绝不许
+   *  拿斜坡冒充」—— 一个斜面只要 1 个 mesh,所以这个数本身就是那条规定的
+   *  执行方式:预算一旦掉到 1,楼梯就退化成斜坡了。 */
+  steps: FORM.stepCount,
   /** 槽底 + 两道边墙 + 满水 + 半水。
    *
    *  满水和半水非得是两件不可:规则 4 要求「水流到一半停住、末端悬空」是一个
@@ -64,6 +70,7 @@ const ALLOWED_GEOMETRY = new Set(["BoxGeometry", "CylinderGeometry", "SphereGeom
 
 const LEVELS: { name: string; level: Level; layout: Layout }[] = [
   { name: "level1", level: level1, layout: level1Layout },
+  { name: "level2", level: level2, layout: level2Layout },
 ];
 
 type Built = ReturnType<typeof buildWorld>;
@@ -199,6 +206,10 @@ for (const { name, level, layout } of LEVELS) {
           (n, c) => n + meshesIn(built.pieces.get(c.id) ?? new Scene()).length,
           0,
         ),
+        steps: level.steps.reduce(
+          (n, st) => n + meshesIn(built.pieces.get(st.id) ?? new Scene()).length,
+          0,
+        ),
         beast: meshesIn(built.beast).length,
       };
       const want = {
@@ -207,6 +218,7 @@ for (const { name, level, layout } of LEVELS) {
           BUDGET.pool * level.pools.length +
           BUDGET.grandExtra * level.pools.filter((p) => p.grand).length,
         channel: BUDGET.channel * level.channels.length,
+        steps: BUDGET.steps * level.steps.length,
         beast: BUDGET.beast,
       };
 

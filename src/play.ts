@@ -9,6 +9,7 @@ import { turnFromDrag } from "./gesture.ts";
 import { rippleAt } from "./ripple.ts";
 import type { Layout } from "./iso.ts";
 import { level1, level1Layout } from "./levels/level1.ts";
+import { level2, level2Layout } from "./levels/level2.ts";
 import type { Level, PartId, State } from "./rules.ts";
 import {
   begin,
@@ -26,7 +27,10 @@ import {
 import type { Stage } from "./scene.ts";
 import { createStage } from "./scene.ts";
 
-const LEVELS: { level: Level; layout: Layout }[] = [{ level: level1, layout: level1Layout }];
+const LEVELS: { level: Level; layout: Layout }[] = [
+  { level: level1, layout: level1Layout },
+  { level: level2, layout: level2Layout },
+];
 
 type Elements = {
   canvas: HTMLCanvasElement;
@@ -42,6 +46,7 @@ export function mount(el: Elements): () => void {
   let stage: Stage | null = null;
   let locked = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let advance: ReturnType<typeof setTimeout> | undefined;
 
   function paintWater(): void {
     // 第三个参数是「哪些池子有水」,用的是 `wetPools` 不是 `reachable` ——
@@ -62,6 +67,14 @@ export function mount(el: Elements): () => void {
     const solved = finalPoolFull(level, state);
     el.stage.classList.toggle("flowered", solved);
     stage?.setSolved(solved);
+    // 通关之后自己进下一关 —— §7 不做菜单、不做关卡选择,所以「下一关」不能是
+    // 一个按钮。先让喷泉喷一会儿:那是唯一的通关反馈,不给它时间等于没给反馈。
+    if (solved && index + 1 < LEVELS.length && advance === undefined) {
+      advance = setTimeout(() => {
+        advance = undefined;
+        load(index + 1);
+      }, INPUT.nextLevelMs);
+    }
     el.stage.classList.toggle("attap", standingOnPool(level, state) !== null);
   }
 
@@ -205,6 +218,10 @@ export function mount(el: Elements): () => void {
 
   function load(next: number): void {
     if (timer !== undefined) clearTimeout(timer);
+    if (advance !== undefined) {
+      clearTimeout(advance);
+      advance = undefined;
+    }
     locked = false;
     index = next;
     ({ level, layout } = LEVELS[next]);
@@ -310,6 +327,7 @@ export function mount(el: Elements): () => void {
 
   return () => {
     if (timer !== undefined) clearTimeout(timer);
+    if (advance !== undefined) clearTimeout(advance);
     cancelAnimationFrame(frame);
     window.removeEventListener("keydown", onKey);
     el.stage.removeEventListener("pointerdown", onPointerDown);

@@ -134,6 +134,45 @@ function pool(): Mesh {
 }
 
 /**
+ * 一段楼梯:从 `from`(底)爬到 `to`(顶)。
+ *
+ * §3.5 的原话是「要有可见的厚度,绝不许拿斜坡冒充」。所以它是 `stepCount` 级
+ * 实心的踏步,每一级从地面长上来 —— 不是几片悬空的板,也不是一个斜面。
+ *
+ * 级数是常数,每一级的高和进深由起止点算出来:同一段楼梯跨一层还是两层都自洽,
+ * 而写死「一级多高」等于要求全世界的楼梯一样高。
+ *
+ * 每一件 mesh 的 position 都是 (0,0,0),形状全烘进几何的原点(§3.1)——
+ * group 落在 `from` 那个整数格点上。
+ */
+function steps(from: Vec3, to: Vec3): Group {
+  const g = new Group();
+  g.position.set(...from);
+
+  const rise = to[1] - from[1];
+  const dx = to[0] - from[0];
+  const dz = to[2] - from[2];
+  const run = Math.hypot(dx, dz);
+  const angle = Math.atan2(dx, dz);
+  const n = FORM.stepCount;
+
+  for (let i = 0; i < n; i++) {
+    const top = (rise * (i + 1)) / n;
+    const depth = run / n;
+    // 每一级都从**底**实心长到它自己的顶面 —— 侧面因此是一道阶梯状的实体,
+    // 和露台「侧面是主体的实心挤出」是同一句话。
+    const piece = new Mesh(
+      new BoxGeometry(TILE, top, depth)
+        .translate(0, top / 2, depth * (i + 0.5) - run / 2)
+        .rotateY(angle),
+      lambert(PALETTE.sandstone.mid),
+    );
+    g.add(piece);
+  }
+  return g;
+}
+
+/**
  * 终点大池的上层:一根柱子托起一只浅盆,盆里一层水。
  *
  * 为什么只有大池有:§3.5 的几何词汇表里池子就是「1 格、内嵌的圆柱」,而喷泉
@@ -441,6 +480,15 @@ export function buildWorld(level: Level, layout: Layout): BuiltWorld {
     g.position.set(...place.at);
     mount(g, place);
     pieces.set(p.id, g);
+  }
+
+  for (const st of level.steps) {
+    const place = layout.ports[st.id];
+    if (!place || !("from" in place)) continue;
+    const g = steps(place.from, place.to);
+    // 楼梯的 group 已经落在 from 上,mount 只负责把它挂到可转的砖底下。
+    mount(g, place);
+    pieces.set(st.id, g);
   }
 
   for (const c of level.channels) {

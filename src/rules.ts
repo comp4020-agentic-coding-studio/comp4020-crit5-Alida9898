@@ -15,6 +15,9 @@ export type Turn = 0 | 1 | 2 | 3;
 export type Pool = { id: PortId; on?: PortId; isFinal?: boolean; grand?: boolean };
 export type Channel = { id: PortId; ends: [PortId, PortId] };
 export type Platform = { id: PortId };
+/** 一段楼梯。§3.5:「要有可见的厚度,绝不许拿斜坡冒充」。
+ *  它的摆放是一段 `{ from, to }`:底和顶,顶比底高。 */
+export type StepRun = { id: PortId };
 export type TapPoint = { id: PortId; on: PortId };
 
 /** 一次「配置」:相机在哪、每块砖转到第几档。两者都是有限枚举。 */
@@ -47,6 +50,8 @@ export type Level = {
   pools: Pool[];
   channels: Channel[];
   platforms: Platform[];
+  /** 楼梯。和平台分开,因为它是**跨层**的:一个 `at` 说不清它从哪儿到哪儿。 */
+  steps: StepRun[];
   tapPoints: TapPoint[];
   /** 可转的砖块。 */
   parts: PartId[];

@@ -3,6 +3,7 @@ import { CAMERA } from "../src/config/style.ts";
 import type { Layout } from "../src/iso.ts";
 import { anchorsOf, frameFraction, project, turnedAround } from "../src/iso.ts";
 import { level1, level1Layout } from "../src/levels/level1.ts";
+import { level2, level2Layout } from "../src/levels/level2.ts";
 import type { Config, Level, PartId, Turn } from "../src/rules.ts";
 import { holds } from "../src/rules.ts";
 
@@ -14,7 +15,10 @@ import { holds } from "../src/rules.ts";
 //
 // 没有这个,「视觉对齐由摆放保证」就只是一句话,靠人盯着截图,而人一改坐标就忘。
 
-const CASES: { level: Level; layout: Layout }[] = [{ level: level1, layout: level1Layout }];
+const CASES: { level: Level; layout: Layout }[] = [
+  { level: level1, layout: level1Layout },
+  { level: level2, layout: level2Layout },
+];
 
 /**
  * 枚举一关的全部配置:四个相机角度 × 每块砖的四个档位。
@@ -148,6 +152,7 @@ describe("每条声明的 link,模型都真的摆成了那样", () => {
           ...level.pools.map((p) => p.id),
           ...level.channels.map((c) => c.id),
           ...level.platforms.map((p) => p.id),
+          ...level.steps.map((st) => st.id),
           ...level.tapPoints.map((t) => t.id),
         ];
         for (const id of ports) expect(layout.ports[id], `${id} 没有摆放位置`).toBeTruthy();

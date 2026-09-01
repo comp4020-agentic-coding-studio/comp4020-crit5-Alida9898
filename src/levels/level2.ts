@@ -1,0 +1,108 @@
+// 第二关 · 一个视角接不上两处
+//
+// 教规则 3:**水只从兽脚下那口池子开始流**。
+//
+// 这一关有两处断口,而它们**不可能在同一个视角下同时接上** ——
+//   · 楼梯只在 135° 和出生点接上;
+//   · 拐角渠只在 225° 接到拐角池、再接到终点喷泉。
+// 所以流程只能是:转到 135° → 兽爬上蓄水池 → 转到 225° → 引水。
+// 第二次转视角落地时兽必须**已经站在蓄水池上**,否则没有水源可言。
+// 规则 3 不是这一关的装饰,是它成立的原因。
+//
+// 拐角为什么是两段渠:§3.5 规定渠只能轴对齐,而规则 4 要求「渠的两端都锚在
+// 池子上才算灌满」。所以拐角处必须有一口池 —— `elbow` 就是那个拐角本身,
+// 不是绕过拐角的补丁。
+
+import type { Layout } from "../iso.ts";
+import type { Level } from "../rules.ts";
+
+export const level2: Level = {
+  name: "一个视角接不上两处",
+
+  pools: [
+    { id: "cistern", on: "cisternDeck" },
+    // 拐角池。它不是谜题的一部分,是拐角的物理必需品(见文件头)。
+    { id: "elbow", on: "elbowDeck" },
+    { id: "grandBasin", on: "basinDeck", isFinal: true, grand: true },
+  ],
+
+  channels: [
+    { id: "chanA", ends: ["cistern", "elbow"] },
+    { id: "chanB", ends: ["elbow", "grandBasin"] },
+  ],
+
+  platforms: [
+    { id: "birth" },
+    { id: "cisternDeck" },
+    { id: "elbowDeck" },
+    { id: "basinDeck" },
+  ],
+
+  // 这一关唯一的楼梯。它整段悬在空中,只有 135° 那一眼把它的底和出生点接上。
+  steps: [{ id: "stair" }],
+
+  tapPoints: [],
+  parts: [],
+
+  waterLinks: [
+    // 上游口坐在蓄水池上,任何角度都接着。
+    { from: "cistern", to: "chanA", when: {} },
+    // 第一段渠的出水口只在 225° 落到拐角池。
+    { from: "chanA", to: "elbow", when: { camera: 225 } },
+    { from: "elbow", to: "chanB", when: {} },
+    // 第二段渠的出水口只在 225° 落到终点喷泉 —— 和上一条同一个角度,
+    // 所以一次转视角就把整条拐角渠接通。
+    { from: "chanB", to: "grandBasin", when: { camera: 225 } },
+  ],
+
+  walkLinks: [
+    // 楼梯的底只在 135° 看起来落在出生点上。这是这一关的第一个断口。
+    { between: ["birth", "stair"], when: { camera: 135 } },
+    // 楼梯顶和蓄水池是**真的**挨着的,任何角度都能迈过去 —— 一关只教一件事,
+    // 上去之后不该再有第二个惊喜。
+    { between: ["stair", "cistern"], when: {} },
+  ],
+
+  beastAt: "birth",
+
+  opens: { camera: 45, turns: {} },
+};
+
+/**
+ * 摆放。
+ *
+ * 这组坐标是**按传感器的判据穷举出来的**,不是摆出来再调的:声明的对齐要
+ * < 0.05,没声明的必须分开 > 0.6,通着水的渠必须往画面下方走(规则 2)。
+ * 48 组通过,这里取跨度最小、全部 y ≥ 0、且没有两个 port 叠在同一格列的一组。
+ *
+ * 两个错觉各自的差值:
+ *   · stair 的底 (-1,1,1) = birth + (-1,1,1),而 (-1,1,1) 正是 **135°** 的
+ *     隐身方向本身 —— 只在那一档落到同一像素,其余三档差 1.63 以上。
+ *   · chanA 的末端到 elbow、chanB 的末端到 grandBasin,差值都是 (1,-1,1),
+ *     那是 **225°** 隐身方向的反向 —— 只在那一档重合,而且目标落在渠口
+ *     **背后**,所以是水从渠口倒下去,不是渠戳进池子。
+ */
+export const level2Layout: Layout = {
+  pivots: {},
+  ports: {
+    birth: { at: [0, 0, 0] },
+
+    // 楼梯有一格进深:没有进深的「楼梯」是梯子,§3.5 要的是看得见的踏步。
+    stair: { from: [-1, 1, 1], to: [-1, 2, 2] },
+
+    cistern: { at: [-1, 2, 3] },
+    cisternDeck: { at: [-1, 2, 3] },
+
+    // 第一段:沿 -z 三格。三格才够让「水停在半路、末端悬空」看得见(规则 4)。
+    chanA: { from: [-1, 2, 3], to: [-1, 2, 0] },
+
+    elbow: { at: [0, 1, 1] },
+    elbowDeck: { at: [0, 1, 1] },
+
+    // 第二段:沿 -x 三格。方向和第一段不同,屏幕上因此是一个真正的 90° 拐角。
+    chanB: { from: [0, 1, 1], to: [-3, 1, 1] },
+
+    grandBasin: { at: [-2, 0, 2] },
+    basinDeck: { at: [-2, 0, 2] },
+  },
+};

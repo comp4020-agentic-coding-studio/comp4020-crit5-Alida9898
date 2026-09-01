@@ -36,6 +36,8 @@ export const level1: Level = {
     { id: "basinDeck" },
   ],
 
+  // 第一关没有楼梯:兽走的是同一层的地砖。
+  steps: [],
   tapPoints: [],
   parts: [],
 
