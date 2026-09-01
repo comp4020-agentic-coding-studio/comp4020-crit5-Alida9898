@@ -114,6 +114,22 @@ for (const { name, level, layout } of LEVELS) {
       }
     });
 
+    it("每块露台都砌到地面,没有一块飘在空中", () => {
+      // §3.5:「侧面是主体的实心挤出」。柱廊被拆掉之后,y=1 那几块露台底下
+      // 一度什么都没有 —— 画面上它们悬空,而悬空的东西读不出重量,整座塔就
+      // 不像塔。这条只问一件事:每块露台的最低点有没有到地。
+      const { built } = stage(level, layout);
+      for (const p of level.platforms) {
+        const piece = built.pieces.get(p.id);
+        expect(piece, `${p.id} 没有被建出来`).toBeTruthy();
+        const bottom = new Box3().setFromObject(piece as never).min.y;
+        expect(
+          bottom,
+          `${p.id} 的底在 y=${bottom.toFixed(3)},离地还有 ${bottom.toFixed(3)} —— 它是飘着的`,
+        ).toBeLessThanOrEqual(1e-9);
+      }
+    });
+
     it("把每个池子嵌进它所在的平台里,不让它凸出来", () => {
       const { built } = stage(level, layout);
       for (const p of level.pools) {

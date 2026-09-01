@@ -49,12 +49,25 @@ const lambert = (colour: string, side?: Side): MeshLambertMaterial =>
  * 的实心顶板会把它底下任何东西盖死,池子就永远看不见;护栏中间是空的,水面
  * 低于它,「内嵌」才成立。
  */
-function terrace(hue: keyof typeof PALETTE = "sandstone", deck = false): Group {
+function terrace(
+  hue: keyof typeof PALETTE = "sandstone",
+  deck = false,
+  toGround = 0,
+): Group {
   const g = new Group();
   const tone = PALETTE[hue];
 
   // 顶面在 y=0,所以每一层都往下长。
   const topDepth = deck ? 0 : FORM.terraceSlab;
+
+  // 主体一直挤到地面。柱廊拆掉之后,y=1 那几块露台底下就什么都没有了 ——
+  // 它们飘在空中,而 §3.5 的原话是「侧面是主体的实心挤出」。参考图里的阶梯塔
+  // 也是一路砌到地的实心体,没有一根柱子。
+  //
+  // `toGround` 是顶面离地多高,由摆放的 y 推出来 —— 那是**尺寸**,不是位置,
+  // §3.1 允许(「对齐靠改几何的尺寸或原点,不靠挪位置」)。给 0 就退回原来那个
+  // 固定厚度,免得没有 y 的调用点算出负长度。
+  const bodyHeight = Math.max(FORM.terraceBody, toGround - topDepth - FORM.corniceHeight);
 
   if (deck) {
     // 池沿。开口圆柱是一片没有厚度的墙,所以要 DoubleSide —— 否则远侧那半圈
@@ -81,11 +94,7 @@ function terrace(hue: keyof typeof PALETTE = "sandstone", deck = false): Group {
   }
 
   const body = new Mesh(
-    new BoxGeometry(TILE, FORM.terraceBody, TILE).translate(
-      0,
-      -topDepth - FORM.terraceBody / 2,
-      0,
-    ),
+    new BoxGeometry(TILE, bodyHeight, TILE).translate(0, -topDepth - bodyHeight / 2, 0),
     lambert(tone.mid),
   );
   g.add(body);
@@ -95,7 +104,7 @@ function terrace(hue: keyof typeof PALETTE = "sandstone", deck = false): Group {
       TILE + FORM.corniceOverhang * 2,
       FORM.corniceHeight,
       TILE + FORM.corniceOverhang * 2,
-    ).translate(0, -topDepth - FORM.terraceBody - FORM.corniceHeight / 2, 0),
+    ).translate(0, -topDepth - bodyHeight - FORM.corniceHeight / 2, 0),
     lambert(tone.dark),
   );
   g.add(cornice);
@@ -290,7 +299,8 @@ export function buildWorld(level: Level, layout: Layout): BuiltWorld {
     if (!place || !("at" in place)) continue;
     const host = deckOf.get(platform.id);
     // 终点大池那块砖用赭金 —— 没有 HUD 也没有文字,玩家一眼认出目标全靠它。
-    const g = terrace(host?.grand ? "ochre" : "sandstone", host !== undefined);
+    // 顶面离地多高 = 它摆在第几层。这块砖因此一路砌到地面,不再飘着。
+    const g = terrace(host?.grand ? "ochre" : "sandstone", host !== undefined, place.at[1] * TILE);
     g.position.set(...place.at);
     mount(g, place);
     pieces.set(platform.id, g);
