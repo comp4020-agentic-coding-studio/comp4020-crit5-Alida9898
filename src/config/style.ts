@@ -90,4 +90,6 @@ export const FORM = {
   channelWidth: 0.38,
   channelWall: 0.09,
   waterInset: 0.06,
+  /** 渠从池沿起画,而不是从池心 —— 这是往里收的距离。 */
+  poolInset: 0.42,
 } as const;

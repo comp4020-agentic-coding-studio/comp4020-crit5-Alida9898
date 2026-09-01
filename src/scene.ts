@@ -139,14 +139,31 @@ function colonnade(size: number, height: number): Group {
 
 /** 一段砖砌水渠:两道侧壁夹着一条水。水是独立的物体,不是把渠染蓝 —— 后者
  *  会让水淹掉砖,读起来就不再是「某个东西里面的水」。 */
+/**
+ * 一段砖砌水渠。
+ *
+ * 逻辑锚点是两端的**中心点**(对齐判定用的就是它),但画出来的渠要从池沿起、
+ * 到出水口止 —— 否则它是一根从池心长出来、又戳进另一个池心的棍子,读起来是
+ * 两个物件穿模,不是水利工程。所以这里把起点往里收一个池半径,末端留一个
+ * 朝下的唇。
+ */
 function channel(from: Vec3, to: Vec3): { group: Group; water: Mesh; half: Mesh } {
   const g = new Group();
-  const dx = to[0] - from[0];
-  const dz = to[2] - from[2];
-  const span = Math.hypot(dx, dz);
-  const angle = Math.atan2(dx, dz);
+  const rawDx = to[0] - from[0];
+  const rawDz = to[2] - from[2];
+  const rawSpan = Math.hypot(rawDx, rawDz);
+  const angle = Math.atan2(rawDx, rawDz);
 
-  const mid: Vec3 = [(from[0] + to[0]) / 2, (from[1] + to[1]) / 2, (from[2] + to[2]) / 2];
+  // 从池沿出发,不从池心。
+  const inset = Math.min(FORM.poolInset, rawSpan * 0.42);
+  const ux = rawDx / rawSpan;
+  const uz = rawDz / rawSpan;
+  const start: Vec3 = [from[0] + ux * inset, from[1], from[2] + uz * inset];
+  const dx = to[0] - start[0];
+  const dz = to[2] - start[2];
+  const span = Math.hypot(dx, dz);
+
+  const mid: Vec3 = [(start[0] + to[0]) / 2, (start[1] + to[1]) / 2, (start[2] + to[2]) / 2];
 
   // 空渠必须看得出是「一条潜在的路,只是现在是空的」:两道立起来的边墙夹着
   // 一条凹下去的槽底。没有这个轮廓,断口那头就只是一片虚空,玩家不会想到
@@ -189,12 +206,22 @@ function channel(from: Vec3, to: Vec3): { group: Group; water: Mesh; half: Mesh 
   );
   half.rotation.y = angle;
   half.position.set(
-    from[0] + dx * 0.275,
+    start[0] + dx * 0.275,
     mid[1] + FORM.channelWall * 0.5,
-    from[2] + dz * 0.275,
+    start[2] + dz * 0.275,
   );
   half.visible = false;
   g.add(half);
+
+  // 出水口:末端一圈朝下的唇。水是从这里倒出去的 —— 有了它,渠的末端才像
+  // 「口」,不像被砍断的棍子;悬空的时候也才看得出「这里本该有东西接着」。
+  const lip = new Mesh(
+    new BoxGeometry(FORM.channelWidth + 0.14, FORM.channelWall * 1.5, 0.12),
+    lambert(PALETTE.sandstone.dark),
+  );
+  lip.rotation.y = angle;
+  lip.position.set(to[0] - ux * 0.03, to[1] - FORM.channelWall * 0.4, to[2] - uz * 0.03);
+  g.add(lip);
 
   return { group: g, water, half };
 }
