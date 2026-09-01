@@ -472,6 +472,20 @@ either way.
   reach the tap point. One turn joins the stairs and the platform on screen;
   the beast walks up, stands, and the water finishes on its own. Teaches
   rule 3.
+
+  **Redesigned on 2026-09-02, at the author's direction.** The channel is
+  broken too, and the level has two joins that *cannot both hold at the same
+  azimuth*: the stairs join the ground at one, the channel run joins at
+  another. So the shape is turn → climb → turn → pour, and rule 3 is what
+  makes it work --- the beast has to already be standing on the cistern when
+  the second turn lands, because water only starts where it stands. The run
+  from cistern to fountain **turns a corner**; §3.5 allows axis-aligned
+  channels only, so a corner is two channels, and rule 4 ("both ends anchored
+  to pools") then requires a small pool at the bend. That pool is the corner,
+  not a workaround for it.
+
+  This takes on some of what level 3 was going to teach. Levels 3 and 4 will
+  need re-scoping if they are built.
 - **Level 3 · Water opens the road** --- between the beast and the goal is a
   gap that no configuration bridges directly. The beast must first reach a tap
   point and release water so that the channel spanning the gap fills into a
