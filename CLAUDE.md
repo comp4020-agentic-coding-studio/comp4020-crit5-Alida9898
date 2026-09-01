@@ -192,65 +192,169 @@ and call it from the handler. `pouredLevel(startLevel, dy, travel)` in
 in `spec/tuning.test.ts`. Applies to anything with a sign in it --- scroll,
 drag, zoom, scrub.
 
-## Crit 5: the constraints are the design (retires with this brief)
+## The game: Hanging Gardens (this brief only — retires with it)
 
-Agreed before any code was written. These leave with the brief; what carries
-forward is the move underneath them --- turning a constraint into a grep rather
-than a promise, so that breaking it is a red check and not a code review someone
-has to remember to do. The sensors live in `spec/architecture.test.ts`, and the
-constraints no sensor can hold are named as such at the end.
+The specification below is the author's, kept in their own words because it is
+the contract and a translation would blur it. What carries forward from this
+section is not the rules but the move underneath them: a constraint written
+down and wired to a check beats a constraint remembered.
 
-**Connectivity is declared, never inferred.**
+古巴比伦空中花园主题的视错觉解谜游戏。玩家旋转**相机**,利用等距投影下的
+视觉重合,重组水路与步行路径,让幼发拉底河的水层层向上,最终填满顶层的大蓄水池。
 
-- A module's rotation is a finite enumeration of states, not a continuous angle.
-- Each rotation state carries a hand-written connectivity table declaring which
-  ports connect, and which way flow goes.
-- At runtime, look the answer up. No raycasting, no screen-space projection, no
-  bounding-box overlap --- no deriving connectivity from geometry of any kind.
-- Visual alignment is the art's job to place and the table's job to declare. It
-  is never the code's job to work out.
-- Level data is hand-written literals, not generated.
+引水兽(穆什胡什)是唯一的角色。它不战斗、不跳跃,只走路和站立。
 
-Worth a rule rather than a preference because geometric connectivity fails
-*softly*: a pipe that looks joined and isn't reads as a bug in the puzzle rather
-than a bug in the tolerance, and the fix is a magic epsilon nobody can defend. A
-table is wrong loudly --- the port is in it or it is not --- and it is the thing
-a rule test can actually assert.
+### 一、五条核心规则
 
-**Rendering is flat and orthographic.**
+这五条是整个游戏的全部规则,不可增加,不可设例外。
 
-- Three.js. `OrthographicCamera` only; no `PerspectiveCamera`.
-- No `OrbitControls`. Camera positions are a finite enumeration, animated
-  between.
-- Built-in Three.js primitives only. No imported models, no textures.
-- Flat solid-colour materials. No PBR, no normal maps, no shadow maps, no
-  ambient occlusion, no post-processing.
-- Four-colour palette: lapis blue, ochre gold, sandstone off-white, date-palm
-  green. One module owns them as named constants --- see the canvas bullet under
-  agent-browser for why inline colours cannot be audited at all.
+1. **屏幕上看起来连着,就是连着。** 所有连通判定——水路和步行路径——都基于
+   当前相机角度下的视觉连接,与三维中的真实距离无关。没有例外。
+2. **水只向屏幕上看起来更低的方向流。**
+3. **引水兽站在取水点上,水才开始流。** 兽离开取水点,已经发生的结果不回退。
+4. **一段水渠的两端都锚在蓄水池上,该段才算灌满。灌满不可逆。**
+   只流到一半、末端没有接到池子的水渠,保持半满状态,不可行走。
+5. **灌满的水渠是可行走的路面,但它仍然遵守第 1 条。**
+   已灌满的水渠在某些相机角度下看起来是断开的,那个角度下就走不过去。
+   「满」是水的状态,「通」是视觉的状态,两者互不影响。
 
-**Scope of this version.**
+由规则推出的设计后果(实现时必须保持):
 
-- No audio.
-- Desktop input only: mouse click, arrow keys, Space. Mobile has to open; it
-  does not have to be playable.
-- No combat, no timer, no score, no health, no written tutorial.
-- Rotation is click-triggered, never dragged. Input is refused while a rotation
-  animation is running --- which is state with an edge in it, so by the pure
-  function rule above it belongs in a function a test can call, not inside the
-  click handler.
+- 水的对齐要求(渠的两端锚到池子)和步行的对齐要求(渠看起来接着兽脚下的地面)
+  是**同一段几何上的两个不同判定**。同一个相机角度可能满足其一而不满足另一。
+  谜题的深度来自这里,不要试图统一它们。
+- 「水流到一半停住」是一个**合法且重要的可见失败状态**,必须在画面上明确表现
+  (水停在渠中,末端悬空),不是 bug,不要加逻辑去阻止它发生。
 
-**What a sensor holds:** every banned API is a string in the source, so one grep
-test covers `PerspectiveCamera`, `OrbitControls`, model and texture loaders, PBR
-materials, shadows, post-processing, `Raycaster`, `Box3`, projection, audio, and
-drag listeners. Beyond grep: every module type crossed with every rotation state
-resolves in the connectivity table, and every colour in the scene traces to the
-palette module.
+### 二、架构约束(不可协商)
 
-**What no sensor holds,** so it is on you and on the crit: whether the level
-data is genuinely hand-authored, whether the art actually lines up with what the
-table claims, and whether rotating a module *feels* like the right length of
-animation. The first two are read; the third is only ever played.
+连通性来自手写的表,不来自几何计算:
+
+- 相机角度是**有限枚举**,不是连续值。
+- 每个相机角度对应一份**手写的连通声明**,列出该角度下哪些端口看起来相连。
+- 运行时只查表。
+- **禁止**射线检测(Raycaster)、屏幕空间投影、包围盒重叠检测,或任何用几何
+  运算推导「两个东西看起来是否对齐」的做法。
+- 视觉上的对齐由模型摆放位置保证,由表格声明,**不由代码推断**。
+- 关卡数据是手写字面量,放在 `src/levels/` 下,一关一个文件。不生成、不派生。
+
+这条是本项目最重要的架构决定。如果发现自己在写「计算两个平台投影后是否重叠」
+之类的代码,说明方向错了,停下来。
+
+```ts
+type PortId = string;   // 池子、渠端、平台边缘等一切可连接点的名字
+
+interface Level {
+  pools: { id: PortId; isSource?: boolean; isFinal?: boolean }[];
+  channels: { id: PortId; ends: [PortId, PortId] }[];   // ends 指向两个池子
+  platforms: { id: PortId }[];
+  tapPoints: { id: PortId; on: PortId }[];              // 取水点,及其所在平台
+
+  cameraAngles: Record<number, {
+    waterLinks: [PortId, PortId][];   // 该角度下水路看起来连通的端口对
+    walkLinks: [PortId, PortId][];    // 该角度下可行走面看起来连通的端口对
+  }>;
+}
+```
+
+`waterLinks` 与 `walkLinks` 必须分开声明,不要合并。它们是两套独立的判定。
+`walkLinks` 中可以引用 `channels` 的 id;该条连接只在对应水渠已灌满时生效。
+运行时状态只有两项:当前相机角度、已灌满的水渠集合(只增不减)。
+
+### 三、渲染约束
+
+相机:
+
+- Three.js,相机必须是 `OrthographicCamera`。**禁止 `PerspectiveCamera`。**
+  透视会让远处的边永远无法精确对齐,视错觉的前提就是屏幕上两条边像素级重合。
+- **禁止 `OrbitControls` 或任何自由轨道相机。** 玩家只能在预设角度之间切换。
+- 相机旋转是**本作的核心机制**,不是辅助功能。
+- 角度切换 = 播放一段固定的过渡动画,落到下一个枚举角度。
+  **过渡动画期间不接受输入,不进行任何连通判定。**
+  中间角度必然穿帮,穿帮必须藏在动画里。
+- 相机俯角固定在 30–35 度区间,由 `style.ts` 常量控制。
+
+几何:
+
+- 所有几何体由 Three.js 内置 primitive 构成。
+  **禁止导入外部 3D 模型(.glb/.gltf/.obj 等)、禁止贴图文件。** 一切画面由代码生成。
+- 每块露台由至少三个 primitive 构成:主体、顶面薄板(亮一档)、
+  底部檐口(比主体略宽,暗一档)。不要用单个 box 表示一块露台。
+- 台阶要有可见厚度,不要用斜面代替。柱子分段,不要单根等宽圆柱。
+
+材质与光照:
+
+- 材质用 `MeshLambertMaterial`。**禁止** `MeshStandardMaterial`、
+  `MeshPhysicalMaterial`、PBR、法线贴图、环境光遮蔽、`shadowMap`。
+- **不要用 `MeshBasicMaterial`。** 它不受光,立方体三个面颜色完全一样,
+  体积感会彻底消失。
+- 光照只有两盏:一盏 `DirectionalLight`(方向固定,**不跟随相机**)+
+  一盏 `AmbientLight`(intensity 约 0.6,保证暗面不发黑)。
+- 体积感来自面朝向的明度差异,不来自投影。
+- `WebGLRenderer` 必须开 `antialias: true`。开启 `ACESFilmicToneMapping`,
+  `toneMappingExposure` 约 1.1。背景用暖砂色,不要纯黑或纯白。
+- 允许一层轻微 Bloom。**禁止 SSAO** — 接触阴影会与平涂风格冲突。
+
+色板(不要自行选色,每个色相三档依次用于亮面、中间面、暗面):
+
+```
+砂岩    #E8D5B7  #D4B896  #A8906F
+赭金    #E0A94F  #C08432  #8A5A1E
+青金石  #4A6FA5  #2E4A73  #1B2E4A
+椰枣绿  #7A9455  #5C7340  #3E4F2B
+背景    #F2E4CE
+```
+
+视觉语言:阶梯状塔庙露台、砖砌水渠、棕榈与藤蔓。参考伊什塔尔门的釉砖拼贴——
+平面色块,无纹理,无写实材质。避免:纪念碑谷换皮、古埃及式金色奢华、
+波斯地毯式繁复。
+
+### 四、可调参数必须集中
+
+全部提取为 `src/config/style.ts` 中的具名常量,不得散落在各处硬编码:相机俯角、
+方位角枚举值、正交视锥大小、过渡动画时长与缓动、`DirectionalLight` 的方向向量
+与强度、`AmbientLight` 强度、`toneMappingExposure`、全部色板值、露台厚度、
+檐口外扩量、台阶高度等几何比例常量。
+
+这些值需要人眼反复调整,必须能在不改动逻辑代码的前提下修改。
+
+### 五、关卡设计
+
+四关,难度低,玩具感优先。教学全部由关卡结构承担,**不做文字教程**。
+
+- **第一关 · 只有水** — 起点池 →(断开的渠)→ 终点池。转相机接上,水流过去填满。
+  兽不参与。教规则 1、2。这一关应当短到几乎不算谜题。
+- **第二关 · 只有人** — 渠是完整的,但兽够不到取水点。转相机让阶梯与平台在屏幕上
+  接上,兽走上去站住,水自动流完。教规则 3。
+- **第三关 · 水开出一条路** — 兽与终点之间有一个任何角度都接不上的断口。兽必须先去
+  取水点放水,让横穿该断口的水渠灌满成桥,再踩着水面过去。必须包含一次「水流到
+  一半停住」的诱导:玩家第一次尝试的角度会让水漏向一个没有池子的方向,水悬停在
+  渠中。教规则 4、5。
+- **第四关 · 桥造好了还得再转一次** — 两段渠、两个取水点。灌满第一段 → 踩着它走到
+  第二个取水点 → 灌满第二段 → 此时第二段在当前角度下看起来是断的 → 再转一次相机
+  才能走过去 → 填满终点大池。
+
+通关条件是**终点大池被填满**,不是「水抵达终点」。大池水位渐进上涨,涨满瞬间整座
+露台植物生长。
+
+### 六、通关反馈
+
+水流经的层级长出椰枣树与藤蔓。关卡开始时露台是光秃的石头,视野完全通透。解完时
+枝叶填满画面,前景叶片垂到镜头前。这就是全部的通关反馈。**不做 HUD、不做过关弹窗、
+不做进度条。** 遮挡只发生在谜题已解之后,不得在解题过程中遮挡关键接缝。
+
+### 七、本版本不做
+
+音频(全部)、移动端触控控件(只做桌面:鼠标点击 + 方向键 + Space,移动端能打开
+即可)、拖拽操作、战斗、计时、分数、生命值、文字教程、菜单、标题画面、关卡选择、
+存档、第二只引水兽。
+
+### 八、工作方式
+
+- 每次开工前先读 `PLAN.md`(规格里写作 `plan.md`;此仓库大小写不敏感,是同一个
+  文件),只做该文件描述的当轮范围。
+- **涉及新增关卡数据时,先输出数据字面量供确认,再写渲染与逻辑代码。**
+- 其余(check、提交节奏、红状态)见上面的通用条目,不重复。
 
 ## Facts about this stack that have each cost a run
 

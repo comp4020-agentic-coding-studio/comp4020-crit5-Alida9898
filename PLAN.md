@@ -1,94 +1,69 @@
-# Crit 5 plan — the Hanging Gardens
+# PLAN.md
 
-A puzzle about impossible geometry, in Babylon. Supersedes the pipe-grid plan
-that came before it; that mechanic is gone, not adapted. What carries over is
-`CLAUDE.md`, the palette module, and the testing habits — not the game.
+The current round's scope. Read this before starting; do only what it describes.
 
-## What it is
+## Where the code stands against the spec
 
-A ziggurat of terraces, stairs and brick channels. Water starts at the
-Euphrates at the foot of it and runs **only to where it looks lower on
-screen**. Rotate parts of the building until two channels that are nowhere near
-each other in space line up in the picture, and the water climbs somewhere it
-had no business reaching. Water the top garden and the level is done.
+The specification in `CLAUDE.md` supersedes what is currently built. The gap is
+not cosmetic — the central mechanic is different.
 
-Two mechanics, introduced one at a time:
-
-1. **Rotate** a terrace and the seams change — things join and part.
-2. **Place the mušḫuššu**, and the water starts wherever it stands.
-
-## The one architectural decision everything rests on
-
-Seams are **declared, never computed**. A seam is a hand-written statement that
-*in this configuration, these two nodes look joined, and water runs this way
-across them*.
-
-```ts
-type Seam = {
-  from: NodeId;                    // water arrives here
-  to: NodeId;                      // and runs to here, which LOOKS lower
-  when: Partial<Record<PartId, Turn>>;  // only in this configuration
-};
-```
-
-This is what Monument Valley does, and it is the only honest way: "looks
-joined" is an art judgement, not a geometric fact. Deriving it from a
-projection needs a tolerance nobody can defend, and it fails softly — a seam
-that reads as joined and isn't looks like a broken puzzle, not a broken
-epsilon. At runtime the game only ever looks up the table.
-
-Which way is downhill is also declared, for the same reason: on screen it is
-the picture that decides, and the picture is the art's job.
-
-**The sensor that keeps art and table honest.** Nothing derives connectivity
-from geometry — but a test may check the two agree. `spec/illusion.test.ts`
-projects both ends of every declared seam through the same isometric map the
-camera uses and asserts they land within a few pixels of each other. Move a
-terrace in the model and every seam it carries goes red. That is the pairing
-the constraints ask for: the art places, the table declares, and a check says
-they still mean the same thing.
-
-## Rules the levels teach, in order
-
-| # | Teaches | How, without a word |
+| | built now | the spec |
 |---|---|---|
-| 1 | rotating changes what connects | One turnable terrace, one obvious gap. Turn it, the channel meets, water runs. |
-| 2 | water only goes where it looks lower | Two seams open at once; only the one that looks downhill carries water. The other just sits there. |
-| 3 | both together | A route that needs a turn *and* the dragon moved to a platform that looks high enough. |
-| 4 | the counter-intuitive one | The finish. A terrace must be turned so the route looks *worse* in space and better on screen. |
+| what the player turns | **terraces**, camera fixed | **the camera**, building fixed |
+| connectivity keyed on | which way each terrace is turned | which camera angle is showing |
+| kinds of link | one (`Seam`) | **two** — `waterLinks` and `walkLinks`, judged separately |
+| filled channels | no such state | become **walkable**, irreversibly |
+| the mušḫuššu | a static marker | walks; **water only runs while it stands on a tap** |
+| winning | water reaches the goal | the **final pool fills** |
+| materials | `MeshBasicMaterial`, unlit | `MeshLambertMaterial`, two lights |
+| palette | 4 flat colours | 4 hues × 3 tones + background |
 
-Difficulty stays low — this is a toy. Every level is winnable in a handful of
-moves, and nothing is ever lost: a wrong configuration simply doesn't flow.
+So `illusion.ts`, `gardens.ts`, `ziggurat.ts` and `play.ts` are rewritten, not
+adapted. `spec/illusion.test.ts` keeps its *method* — project both ends of a
+declared link and check the model still says what the table says — but is
+rewritten against the new shape.
 
-## The mušḫuššu
+What survives untouched: `CLAUDE.md`, the invariants, and the habit of turning
+each constraint into a sensor.
 
-The Ishtar Gate dragon: serpent head, lion forelegs, eagle hind talons,
-scorpion tail. Drawn as a flat side-on silhouette in glazed relief, keeping
-the Mesopotamian convention of a profile body with a frontal eye. **That is
-not an error to correct** — it is the visual grammar, and straightening it into
-correct perspective would be the reskin this brief warns against.
+## Round 1 — foundations (this round)
 
-It is not a walker. It is where water begins.
+1. `src/config/style.ts`: every tunable named in one place — camera pitch and
+   the azimuth enumeration, frustum size, transition duration and easing, both
+   lights, tone mapping exposure, the full three-tone palette, and the terrace
+   and step proportions.
+2. `src/rules.ts`: the `Level` shape exactly as specified, plus the two pure
+   judgements over it — which channels fill, and where the beast can walk —
+   each a table lookup and nothing else.
+3. `src/levels/level1.ts`: **data first, shown for confirmation before any
+   rendering or logic is written against it** (spec §8).
+4. `spec/rules.test.ts`: the five rules as tests. In particular the two that
+   are easy to lose — that a half-filled channel is *not* walkable, and that
+   filling is irreversible while walkability is not.
 
-## Look
+Not this round: rendering, the beast's movement, levels 2–4.
 
-Orthographic, isometric. Flat colour, no textures, no gradients, no shadow
-effects — the surface quality comes from glazed brick sitting flat next to
-glazed brick. Lapis (the gate's cobalt), ochre, sandstone, date-palm green.
-Stepped ziggurat terraces, brick channels, palms and vines. Not Egyptian gold,
-not Persian carpet density: Babylon reads as austere.
+## The sensors this shape needs
 
-Cameras are a few fixed angles with transitions between them. No orbit control.
+Connectivity is declared, so nothing may derive it. But tests may still check
+the declarations are coherent, and these are the ones worth having:
 
-## Winning is the garden, not a banner
+- every id named in a link exists among the pools, channels and platforms
+- no channel claims an end that is not a pool
+- a `walkLink` naming a channel is only ever live once that channel is filled
+- every level is solvable from its opening state, by some sequence of camera
+  angles and tap visits — and is **not** already solved on arrival
+- water never runs to a port the tables call higher at that angle
 
-Terraces open bare and the view is clear through the structure. Every level a
-course of water reaches puts out date palms and vines; by the end the foliage
-fills the frame and front leaves hang into the camera. Going from stone to
-garden **is** the feedback. No UI is added for it.
+## Open questions
 
-## What no test can hold
-
-Whether a seam actually reads as joined to a stranger's eye; whether the
-dragon reads as Babylonian rather than as a generic monster; whether the
-growth feels like a reward. Those are the crit.
+1. **How does the beast move?** The spec says it walks and stands, and that the
+   player is on desktop with click, arrows and Space. Click a reachable
+   platform to walk there is the obvious reading, and arrows/Space then need a
+   job — or they are the camera. Which pair is which?
+2. **Are camera angles a ring or a list?** Four azimuths at 90° apart, cycled
+   one way by one key, is the simplest thing that matches "finite enumeration"
+   and a fixed transition. Confirm four, and whether they cycle both ways.
+3. **§5 level 1 says the beast does not take part** — so level 1 has no tap
+   point at all, and water runs from the start. Confirm: the first thing the
+   player ever does is turn the camera, with nothing else on screen.

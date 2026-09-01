@@ -1,12 +1,21 @@
-/* The four colours are owned by src/palette.ts and injected as custom
+/* The palette is owned by src/config/style.ts and injected as custom
    properties at mount. The fallbacks below exist only so the page is legible
-   before the script runs; spec/palette.test.ts pins them to the module so the
+   before the script runs; spec/style.test.ts pins them to the module so the
    two can never drift. */
 :root {
-  --sandstone: #ede0c8;
-  --lapis: #1d4e89;
-  --ochre: #c08a2e;
-  --grove: #4f7942;
+  --background: #f2e4ce;
+  --sandstone-light: #e8d5b7;
+  --sandstone-mid: #d4b896;
+  --sandstone-dark: #a8906f;
+  --ochre-light: #e0a94f;
+  --ochre-mid: #c08432;
+  --ochre-dark: #8a5a1e;
+  --lapis-light: #4a6fa5;
+  --lapis-mid: #2e4a73;
+  --lapis-dark: #1b2e4a;
+  --date-light: #7a9455;
+  --date-mid: #5c7340;
+  --date-dark: #3e4f2b;
 }
 
 * {
@@ -18,11 +27,8 @@ body {
   flex-direction: column;
   min-height: 100vh;
   margin: 0;
-
-  /* Sandstone page, lapis text — 6.43:1, the only pair that carries writing.
-     The desert itself is inside the stage, below. */
-  background: var(--sandstone);
-  color: var(--lapis);
+  background: var(--background);
+  color: var(--lapis-dark);
   font-family: system-ui, sans-serif;
   line-height: 1.5;
 }
@@ -80,7 +86,7 @@ h1 {
      the terraces are sandstone, so nothing shares a colour with what it sits
      on — which it did when the whole page was cobalt and the water vanished
      into it, reading as a hole punched through each terrace. */
-  background: var(--ochre);
+  background: var(--ochre-mid);
   transition: filter 400ms ease-out;
 }
 
@@ -112,7 +118,7 @@ h1 {
 /* The invitation: a turnable terrace breathes until it is turned. */
 .handle::after {
   position: absolute;
-  border: 2px solid var(--lapis);
+  border: 2px solid var(--lapis-dark);
   border-radius: 50%;
   animation: invite 1.9s ease-in-out infinite;
   content: "";
@@ -121,7 +127,7 @@ h1 {
 }
 
 .handle:focus-visible {
-  outline: 3px solid var(--lapis);
+  outline: 3px solid var(--lapis-dark);
   outline-offset: 2px;
 }
 
@@ -154,18 +160,18 @@ h1 {
 .progress li {
   width: 0.5rem;
   height: 0.5rem;
-  border: 1px solid var(--lapis);
+  border: 1px solid var(--lapis-dark);
   border-radius: 50%;
   transition: background 200ms ease-out;
 }
 
 .progress li.here {
-  background: var(--lapis);
+  background: var(--lapis-dark);
 }
 
 .progress li.done {
-  border-color: var(--grove);
-  background: var(--grove);
+  border-color: var(--date-mid);
+  background: var(--date-mid);
 }
 
 @media (prefers-reduced-motion: reduce) {
