@@ -4,7 +4,8 @@
 // 不是射线检测(架构约束禁止),而且覆盖层本身更好:canvas 对 axe 完全不透明,
 // 而按钮是可聚焦、有名字的。
 
-import { CAMERA } from "./config/style.ts";
+import { CAMERA, INPUT } from "./config/style.ts";
+import { turnFromDrag } from "./gesture.ts";
 import type { Layout } from "./iso.ts";
 import { level1, level1Layout } from "./levels/level1.ts";
 import type { Level, PartId, State } from "./rules.ts";
@@ -168,18 +169,43 @@ export function mount(el: Elements): () => void {
     placeHandles();
   }
 
-  // 点在**东西上** = 作用于建筑(兽走过去、转那块砖)。
-  // 点在**空处** = 转相机。方向键做同样的事,给键盘用户。
+  // 转视角是**拖**,点击只剩一个意思:让兽走过去。
   //
-  // 先前一度把相机只交给方向键,想解决「点击管三件事」的混乱 —— 结果把一个
-  // 玩家点得到的动作换成了一个他永远发现不了的动作。这游戏没有一个字的提示,
-  // 所以「能不能被撞见」本身就是设计的一部分。
-  // 真正的混乱不在「点击做了两件事」,而在两件事都发生在物体上、分不开;
-  // 点空处和点物体是分得开的。
-  el.stage.addEventListener("click", (e) => {
+  // 上一版是「点物体 = 走路,点空处 = 转视角」。分开写的时候看着是分得开的,
+  // 玩起来不是:两件事都是「按一下松开」,手上没有区别,第一次玩的人不知道自己
+  // 刚才触发了哪一件,也就学不会哪一件由自己控制。拖和点在手上是两个动作,
+  // 分得开 —— 这是把两个动词分给两个手势,不是把一个动词藏起来。
+  //
+  // 拖动**不跟手**:相机不会随手指连续转,只是够了阈值就播那一段固定的转场,
+  // 落在下一个枚举档位上。§3.2 禁止自由环绕,理由是中间角度必然破坏错觉;
+  // 那条禁令对手势和对方向键是同一条。
+  let dragFrom: number | null = null;
+
+  const onPointerDown = (e: PointerEvent): void => {
+    // 走路的把手是真按钮,点在上面的不算拖动的起手。
     if ((e.target as HTMLElement).closest("button")) return;
-    swing(1);
-  });
+    dragFrom = e.clientX;
+  };
+
+  const onPointerMove = (e: PointerEvent): void => {
+    if (dragFrom === null) return;
+    // 方向那点算术在 gesture.ts 里,是纯函数;这里只负责把它接上。
+    const step = turnFromDrag(e.clientX - dragFrom, INPUT.dragTurnPx);
+    if (step === 0) return;
+    // 一次拖动只落一档:一次手势 = 一段转场,和方向键按一下完全一样。
+    dragFrom = null;
+    swing(step);
+  };
+
+  const onPointerEnd = (): void => {
+    dragFrom = null;
+  };
+
+  el.stage.addEventListener("pointerdown", onPointerDown);
+  el.stage.addEventListener("pointermove", onPointerMove);
+  el.stage.addEventListener("pointerup", onPointerEnd);
+  el.stage.addEventListener("pointercancel", onPointerEnd);
+  el.stage.addEventListener("pointerleave", onPointerEnd);
 
   const onKey = (e: KeyboardEvent): void => {
     if (e.code === "Space" || e.key === " ") {
@@ -231,6 +257,11 @@ export function mount(el: Elements): () => void {
     if (timer !== undefined) clearTimeout(timer);
     cancelAnimationFrame(frame);
     window.removeEventListener("keydown", onKey);
+    el.stage.removeEventListener("pointerdown", onPointerDown);
+    el.stage.removeEventListener("pointermove", onPointerMove);
+    el.stage.removeEventListener("pointerup", onPointerEnd);
+    el.stage.removeEventListener("pointercancel", onPointerEnd);
+    el.stage.removeEventListener("pointerleave", onPointerEnd);
     observer.disconnect();
     stage?.dispose();
   };

@@ -55,6 +55,17 @@ export const LIGHT = {
   ambientIntensity: 0.62,
 } as const;
 
+/**
+ * 输入。桌面端只有三样:拖动转视角、点击让兽走、空格引水。
+ *
+ * 阈值是「一次点击」和「一次拖动」之间的那条线 —— 定小了,手抖一下就转视角;
+ * 定大了,拖起来像卡住。它要被眼睛调,所以在这里,不在处理器里。
+ */
+export const INPUT = {
+  /** 横向拖过这么多 CSS 像素,就落一档转向。 */
+  dragTurnPx: 90,
+} as const;
+
 export const RENDER = {
   antialias: true,
   toneMappingExposure: 1.1,

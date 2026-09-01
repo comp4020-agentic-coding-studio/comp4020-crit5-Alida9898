@@ -490,10 +490,32 @@ cover a load-bearing seam while the player is still solving.
 
 ### 7. Not in this version
 
-Audio (all of it), mobile touch controls (desktop only: mouse click + arrow
-keys + Space; mobile merely has to open), drag interactions, combat, timers,
-score, health, text tutorials, menus, a title screen, level select, saves, a
-second beast.
+Audio (all of it), mobile touch controls (desktop only: drag + mouse click +
+arrow keys + Space; mobile merely has to open), combat, timers, score, health,
+text tutorials, menus, a title screen, level select, saves, a second beast.
+
+**"Drag interactions" left this list on 2026-09-01, at the author's direction.**
+Turning the view is a drag; a click now means one thing only --- send the beast
+there. The version before it put both verbs on the same gesture (click a thing =
+walk, click empty space = turn), which reads as separable when you write it down
+and is not separable in the hand: both are press-and-release, so a first-time
+player cannot tell which of the two they just triggered, and therefore cannot
+learn that either is theirs to control. Splitting two verbs across two gestures
+is not the same move as hiding one of them behind a gesture nobody finds --- the
+earlier reversal (arrow-keys-only, reverted because nobody discovers a key) was
+that one, and this is not.
+
+Two constraints the drag does **not** relax, both still enforced:
+
+- **It does not track the pointer.** Crossing the pixel threshold plays the same
+  fixed transition to the next enum stop that the arrow keys play. §3.2 forbids a
+  free orbit camera because intermediate angles necessarily break the illusion,
+  and that ban reads the same for a gesture as for a key.
+- **Its sign lives in a pure function.** `turnFromDrag(dx, threshold)` in
+  `src/gesture.ts`, called from the `pointermove` handler and pinned by
+  `spec/gesture.test.ts` --- see "A gesture's direction is untestable where it
+  usually lives" above. The threshold itself is `INPUT.dragTurnPx` in
+  `style.ts`, because it gets tuned by hand.
 
 ### 8. Working practice
 
