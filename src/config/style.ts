@@ -69,6 +69,9 @@ export const RENDER = {
  */
 export const TILE = 1;
 
+/** 池沿高度。渠也用它 —— 见 `channelDrop`,两者必须是同一个数,所以只写一次。 */
+const POOL_RIM = 0.12 * TILE;
+
 /** Proportions. A terrace is never one box: body, a lighter top slab, and a
  *  cornice slightly wider than the body and a tone darker.
  *
@@ -97,11 +100,18 @@ export const FORM = {
    *  会把它底下任何东西盖死,池子就永远看不见。「内嵌」在没有 CSG 的情况下
    *  只能这样做:水面低于池沿,而池沿本身是个圈,中间是空的。 */
   poolWallRadius: 0.5 * TILE,
-  poolRim: 0.12 * TILE,
+  poolRim: POOL_RIM,
   /** 水面比池沿低这么多 —— 「内嵌,不凸出」量的就是这一段。 */
   poolSink: 0.05 * TILE,
   /** 水往砖里沉多深。只有顶面看得见,但沉进去才不会和砖顶面共面打架。 */
   poolDepth: 0.3 * TILE,
+
+  /** 渠整体比池沿低这么多,取值就是池沿高度本身:渠的顶沿正好落在池沿的下缘。
+   *
+   *  这是「图层关系」那件事的唯一诚实做法。§3.4 禁止 `renderOrder`、禁止关
+   *  深度测试 —— 前后由深度缓冲说了算。所以要让池子挡住渠,渠就得**真的**
+   *  更低;这个常数一改,遮挡关系跟着改,不需要碰任何画序代码。 */
+  channelDrop: POOL_RIM,
 
   /** Channels: a masonry trough with water sitting inside it. */
   channelWidth: 0.38 * TILE,

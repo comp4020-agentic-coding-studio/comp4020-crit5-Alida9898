@@ -153,10 +153,15 @@ function channel(from: Vec3, to: Vec3): { group: Group; water: Mesh; half: Mesh 
   const span = full - inset * 2;
   // 两头收得一样多,所以槽的中心就是两端的中点,也就是 group 的原点。
 
+  // 整条渠沉到池沿之下。「渠在池子底下」这件事只能是几何上真的更低 ——
+  // §3.4 不许 renderOrder、不许关深度测试,前后一律由深度缓冲说了算。
+  // 沉多少写在 style.ts 里,而且和池沿是同一个常数。
+  const drop = FORM.channelDrop;
+
   /** 造一件渠上的零件:先按 +z 铺好、烘进原点,再整体转到渠的方向。 */
   const piece = (w: number, h: number, len: number, y: number, z: number, colour: string): Mesh =>
     new Mesh(
-      new BoxGeometry(w, h, len).translate(0, y, z).rotateY(angle),
+      new BoxGeometry(w, h, len).translate(0, y - drop, z).rotateY(angle),
       lambert(colour),
     );
 
@@ -170,7 +175,7 @@ function channel(from: Vec3, to: Vec3): { group: Group; water: Mesh; half: Mesh 
     // 转 y 轴之前 +x 就是法线方向。
     const wall = new Mesh(
       new BoxGeometry(FORM.channelWall, FORM.channelWall * 2.1, span)
-        .translate((side * FORM.channelWidth) / 2, FORM.channelWall * 0.25, 0)
+        .translate((side * FORM.channelWidth) / 2, FORM.channelWall * 0.25 - drop, 0)
         .rotateY(angle),
       lambert(PALETTE.sandstone.mid),
     );
