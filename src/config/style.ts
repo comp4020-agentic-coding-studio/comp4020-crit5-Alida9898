@@ -62,24 +62,78 @@ export const RENDER = {
   bloomStrength: 0.18,
 } as const;
 
+/**
+ * §3.1:一个 tile = 一个 Three.js 世界单位。**全项目没有第二个换算比。**
+ *
+ * 下面每一个尺寸都写成 TILE 的倍数或 §3.5 点名的比例,不许出现别的数。
+ */
+export const TILE = 1;
+
 /** Proportions. A terrace is never one box: body, a lighter top slab, and a
- *  cornice slightly wider than the body and a tone darker. */
+ *  cornice slightly wider than the body and a tone darker.
+ *
+ *  **这里全是尺寸,没有一个是位置。**§3.1 的原话是「对齐问题靠改几何的原点或
+ *  尺寸来修,永远不靠挪位置」,所以亚 tile 的细节一律烘进几何自己的原点
+ *  (`geometry.translate`),`mesh.position` 只落在半 tile 的格点上。
+ *  `spec/scene-invariants.test.ts` 盯着这条。 */
 export const FORM = {
-  terraceSize: 1.0,
-  terraceBody: 0.34,
-  terraceSlab: 0.08,
-  corniceOverhang: 0.09,
-  corniceHeight: 0.1,
+  /** 露台的原点是它的**顶面** —— 也就是兽踩的那个面。摆一块露台时
+   *  `position` 就是它顶面的格点,不用再心算厚度。 */
+  terraceBody: 0.34 * TILE,
+  terraceSlab: 0.08 * TILE,
+  /** 檐口比主体每边宽出这么多。§3.5:「略宽于主体」。 */
+  corniceOverhang: 0.045 * TILE,
+  corniceHeight: 0.1 * TILE,
   /** Steps are built, not ramped: each one has a real riser and tread. */
-  stepRise: 0.16,
-  stepTread: 0.26,
-  /** 蓝釉镶边的宽度,沿露台顶面四周走一圈。 */
-  glazeBand: 0.08,
+  stepRise: 0.16 * TILE,
+  stepTread: 0.26 * TILE,
+
+  /** §3.5:池子直径 0.8 TILE。渠道从池沿起画而不是从池心起,用的就是这同一个
+   *  数 —— 不是另起一个看着顺眼的比例(那正是 0.42 这个坑的成因)。 */
+  poolRadius: 0.4 * TILE,
+  /** 池沿:一圈开口圆柱当护栏,半径正好半个 tile。
+   *
+   *  它替掉了池子那块砖的顶板,而不是加在顶板上面 —— 一块铺满整格的实心顶板
+   *  会把它底下任何东西盖死,池子就永远看不见。「内嵌」在没有 CSG 的情况下
+   *  只能这样做:水面低于池沿,而池沿本身是个圈,中间是空的。 */
+  poolWallRadius: 0.5 * TILE,
+  poolRim: 0.12 * TILE,
+  /** 水面比池沿低这么多 —— 「内嵌,不凸出」量的就是这一段。 */
+  poolSink: 0.05 * TILE,
+  /** 水往砖里沉多深。只有顶面看得见,但沉进去才不会和砖顶面共面打架。 */
+  poolDepth: 0.3 * TILE,
+
   /** Channels: a masonry trough with water sitting inside it. */
-  channelWidth: 0.38,
-  channelWall: 0.09,
-  waterInset: 0.06,
-  /** 池子的半径:直径 0.8 TILE。渠道从池沿起画而不是从池心起,用的就是这同
-   *  一个数 —— 不是另起一个看着顺眼的比例(那正是 0.42 这个坑的成因)。 */
-  poolRadius: 0.4,
+  channelWidth: 0.38 * TILE,
+  channelWall: 0.09 * TILE,
+  waterInset: 0.06 * TILE,
+} as const;
+
+/**
+ * 兽。§3.5:占一格,高约一个 TILE。
+ *
+ * 幼年的穆什胡什:头身比大 —— 那是幼体的特征,也是「可爱」的来源。造型仍是
+ * 占位(伊什塔尔门的浮雕留到后面),但尺度是按规格定死的。
+ */
+export const BEAST = {
+  legRadius: 0.06 * TILE,
+  legHeight: 0.28 * TILE,
+  legSpreadX: 0.18 * TILE,
+  legSpreadZ: 0.24 * TILE,
+  bodyRadius: 0.34 * TILE,
+  bodyY: 0.48 * TILE,
+  headRadius: 0.28 * TILE,
+  headY: 0.74 * TILE,
+  headZ: 0.26 * TILE,
+  snoutRadius: 0.14 * TILE,
+  snoutY: 0.66 * TILE,
+  snoutZ: 0.46 * TILE,
+  tailRadius: 0.05 * TILE,
+  tailLength: 0.42 * TILE,
+  tailY: 0.56 * TILE,
+  tailZ: -0.36 * TILE,
+  /** 尾巴上翘的角度(弧度)。 */
+  tailTilt: -0.7,
+  /** 走路时上下起伏的幅度。 */
+  bob: 0.03 * TILE,
 } as const;

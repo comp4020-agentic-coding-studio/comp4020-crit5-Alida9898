@@ -11,6 +11,8 @@ import {
   BoxGeometry,
   CylinderGeometry,
   DirectionalLight,
+  DoubleSide,
+  FrontSide,
   Group,
   Mesh,
   MeshLambertMaterial,
@@ -19,8 +21,9 @@ import {
   SphereGeometry,
   WebGLRenderer,
 } from "three";
+import type { Side } from "three";
 import { ACESFilmicToneMapping } from "three";
-import { BACKGROUND, CAMERA, FORM, LIGHT, PALETTE, RENDER } from "./config/style.ts";
+import { BACKGROUND, BEAST, CAMERA, FORM, LIGHT, PALETTE, RENDER, TILE } from "./config/style.ts";
 import type { Azimuth } from "./config/style.ts";
 import type { Layout, Placement, Vec3 } from "./iso.ts";
 import { project, turnedAround } from "./iso.ts";
@@ -29,58 +32,95 @@ import type { Level, PartId, PortId, Turn } from "./rules.ts";
 /** 相机沿对角线退多远。正交投影下不影响画面,只要越过近裁面。 */
 const D = 60;
 
-const lambert = (colour: string): MeshLambertMaterial =>
-  new MeshLambertMaterial({ color: colour });
+const lambert = (colour: string, side?: Side): MeshLambertMaterial =>
+  new MeshLambertMaterial({ color: colour, side: side ?? FrontSide });
 
-/** 一块露台:主体、顶面薄板(亮一档)、檐口(略宽,暗一档),
- *  再加上一圈蓝釉镶边。单个 box 在固定光下会读成一张纸,规格明令不许。
- *  顶面不画砖缝——规格明确把它归为调试渲染,产线上的顶面是实心石面。 */
-function terrace(size: number, hue: keyof typeof PALETTE = "sandstone"): Group {
+/**
+ * 一块露台。**原点是它的顶面** —— 也就是兽踩的那个面。
+ *
+ * 三件 primitive,一件不多:主体、顶板(亮一档)、檐口(略宽,暗一档)。
+ * 单个 box 在固定光下会读成一张纸,§3.5 明令不许;反过来,凭空多加的装饰
+ * (砖缝、藏青描边、角柱)也不许 —— 「没有关卡数据之外的几何」。
+ *
+ * 每一件的 `position` 都是 (0,0,0):高低差全烘进几何自己的原点。§3.1 的原话
+ * 是「对齐问题靠改几何的原点或尺寸来修,永远不靠挪位置」。
+ *
+ * `deck = true` 时顶板换成一圈开口圆柱护栏 —— 池子那块砖用这个。一块铺满整格
+ * 的实心顶板会把它底下任何东西盖死,池子就永远看不见;护栏中间是空的,水面
+ * 低于它,「内嵌」才成立。
+ */
+function terrace(hue: keyof typeof PALETTE = "sandstone", deck = false): Group {
   const g = new Group();
   const tone = PALETTE[hue];
 
-  const body = new Mesh(new BoxGeometry(size, FORM.terraceBody, size), lambert(tone.mid));
-  g.add(body);
+  // 顶面在 y=0,所以每一层都往下长。
+  const topDepth = deck ? 0 : FORM.terraceSlab;
 
-  const top = FORM.terraceBody / 2;
-  const slab = new Mesh(
-    new BoxGeometry(size * 0.94, FORM.terraceSlab, size * 0.94),
-    lambert(tone.light),
-  );
-  slab.position.y = top + FORM.terraceSlab / 2;
-  g.add(slab);
-
-  // 伊什塔尔门的钴蓝釉:沿顶面四周镶一圈。建筑上唯一的蓝,和水同色不是巧合。
-  for (const [ox, oz] of [
-    [1, 0],
-    [-1, 0],
-    [0, 1],
-    [0, -1],
-  ]) {
-    const band = new Mesh(
-      new BoxGeometry(
-        ox !== 0 ? FORM.glazeBand : size * 0.94,
-        0.02,
-        ox !== 0 ? size * 0.94 : FORM.glazeBand,
-      ),
-      lambert(PALETTE.lapis.mid),
+  if (deck) {
+    // 池沿。开口圆柱是一片没有厚度的墙,所以要 DoubleSide —— 否则远侧那半圈
+    // 的正面朝外,从这个角度看过去被剔掉,池子会缺半边沿。
+    // 这不是绘制顺序的手脚(§3.4 禁的是那个),只是一面墙有两个面。
+    const rim = new Mesh(
+      new CylinderGeometry(
+        FORM.poolWallRadius,
+        FORM.poolWallRadius,
+        FORM.poolRim,
+        24,
+        1,
+        true,
+      ).translate(0, FORM.poolRim / 2, 0),
+      lambert(tone.light, DoubleSide),
     );
-    band.position.set(
-      (ox * (size * 0.94 - FORM.glazeBand)) / 2,
-      top + FORM.terraceSlab + 0.002,
-      (oz * (size * 0.94 - FORM.glazeBand)) / 2,
+    g.add(rim);
+  } else {
+    const slab = new Mesh(
+      new BoxGeometry(TILE, FORM.terraceSlab, TILE).translate(0, -FORM.terraceSlab / 2, 0),
+      lambert(tone.light),
     );
-    g.add(band);
+    g.add(slab);
   }
 
+  const body = new Mesh(
+    new BoxGeometry(TILE, FORM.terraceBody, TILE).translate(
+      0,
+      -topDepth - FORM.terraceBody / 2,
+      0,
+    ),
+    lambert(tone.mid),
+  );
+  g.add(body);
+
   const cornice = new Mesh(
-    new BoxGeometry(size + FORM.corniceOverhang, FORM.corniceHeight, size + FORM.corniceOverhang),
+    new BoxGeometry(
+      TILE + FORM.corniceOverhang * 2,
+      FORM.corniceHeight,
+      TILE + FORM.corniceOverhang * 2,
+    ).translate(0, -topDepth - FORM.terraceBody - FORM.corniceHeight / 2, 0),
     lambert(tone.dark),
   );
-  cornice.position.y = -FORM.terraceBody / 2 - FORM.corniceHeight / 2;
   g.add(cornice);
 
   return g;
+}
+
+/**
+ * 一个池子:**一件几何,就一件。**§3.5「Pool: 1 tile; an inset cylinder,
+ * diameter 0.8 TILE」。
+ *
+ * 顶面落在池沿之下 —— 那是「内嵌,不凸出」的全部含义。往砖里再沉一段,是为了
+ * 不和砖的顶面共面:两个共面的面会 z-fighting,而修它的正道是把几何挪开,
+ * 不是去动深度测试。
+ */
+function pool(): Mesh {
+  const height = FORM.poolDepth + FORM.poolRim - FORM.poolSink;
+  return new Mesh(
+    new CylinderGeometry(FORM.poolRadius, FORM.poolRadius, height, 24).translate(
+      0,
+      FORM.poolRim - FORM.poolSink - height / 2,
+      0,
+    ),
+    lambert(PALETTE.lapis.mid),
+  );
 }
 
 /** 一段砖砌水渠:两道侧壁夹着一条水。水是独立的物体,不是把渠染蓝 —— 后者
@@ -95,81 +135,73 @@ function terrace(size: number, hue: keyof typeof PALETTE = "sandstone"): Group {
  */
 function channel(from: Vec3, to: Vec3): { group: Group; water: Mesh; half: Mesh } {
   const g = new Group();
-  const rawDx = to[0] - from[0];
-  const rawDz = to[2] - from[2];
-  const rawSpan = Math.hypot(rawDx, rawDz);
-  const angle = Math.atan2(rawDx, rawDz);
+  const dx = to[0] - from[0];
+  const dz = to[2] - from[2];
+  const full = Math.hypot(dx, dz);
+  const angle = Math.atan2(dx, dz);
+
+  // 整条渠在**本地**坐标里造,原点是两端的中点,+z 是水流方向。两端都是整数
+  // 格点,所以中点必然落在半 tile 的格点上 —— 那是 group 唯一带位置的地方,
+  // 里面每一件 mesh 的 position 都是 (0,0,0)。
+  g.position.set((from[0] + to[0]) / 2, (from[1] + to[1]) / 2, (from[2] + to[2]) / 2);
 
   // 从池沿出发,不从池心 —— 收进去的量就是池子自己的半径(同一个常数也用来画
   // 池子本体),不是另起一个看着顺眼的比例。span 太短时封顶在半程,防止几何
   // 长度变负,这是数学上的安全边界,不是手调的观感数字。
-  const inset = Math.min(FORM.poolRadius, rawSpan / 2 - 0.01);
-  const ux = rawDx / rawSpan;
-  const uz = rawDz / rawSpan;
-  const start: Vec3 = [from[0] + ux * inset, from[1], from[2] + uz * inset];
-  const dx = to[0] - start[0];
-  const dz = to[2] - start[2];
-  const span = Math.hypot(dx, dz);
+  const inset = Math.min(FORM.poolRadius, full / 2);
+  const span = full - inset;
+  // 槽从 (-full/2 + inset) 铺到 (+full/2),所以它的中心在 +inset/2。
+  const along = inset / 2;
 
-  const mid: Vec3 = [(start[0] + to[0]) / 2, (start[1] + to[1]) / 2, (start[2] + to[2]) / 2];
+  /** 造一件渠上的零件:先按 +z 铺好、烘进原点,再整体转到渠的方向。 */
+  const piece = (w: number, h: number, len: number, y: number, z: number, colour: string): Mesh =>
+    new Mesh(
+      new BoxGeometry(w, h, len).translate(0, y, z).rotateY(angle),
+      lambert(colour),
+    );
 
   // 空渠必须看得出是「一条潜在的路,只是现在是空的」:两道立起来的边墙夹着
   // 一条凹下去的槽底。没有这个轮廓,断口那头就只是一片虚空,玩家不会想到
   // 「这里本来能过」—— 这个形状替代了文字教程。
-  const floor = new Mesh(
-    new BoxGeometry(FORM.channelWidth, FORM.channelWall * 0.7, span),
-    lambert(PALETTE.lapis.dark),
-  );
-  floor.rotation.y = angle;
-  floor.position.set(mid[0], mid[1] - FORM.channelWall * 0.5, mid[2]);
-  g.add(floor);
+  g.add(piece(FORM.channelWidth, FORM.channelWall * 0.7, span, -FORM.channelWall * 0.5, along, PALETTE.lapis.dark));
 
   for (const side of [-1, 1]) {
+    // 边墙沿渠的法线让开半个渠宽。这里是**几何自己的原点**,不是位置微调 ——
+    // 转 y 轴之前 +x 就是法线方向。
     const wall = new Mesh(
-      new BoxGeometry(FORM.channelWall, FORM.channelWall * 2.1, span),
+      new BoxGeometry(FORM.channelWall, FORM.channelWall * 2.1, span)
+        .translate((side * FORM.channelWidth) / 2, FORM.channelWall * 0.25, along)
+        .rotateY(angle),
       lambert(PALETTE.sandstone.mid),
     );
-    wall.rotation.y = angle;
-    // 边墙沿着渠的法线方向让开半个渠宽。
-    const nx = Math.cos(angle) * side * (FORM.channelWidth / 2);
-    const nz = -Math.sin(angle) * side * (FORM.channelWidth / 2);
-    wall.position.set(mid[0] + nx, mid[1] + FORM.channelWall * 0.25, mid[2] + nz);
     g.add(wall);
   }
 
   // 灌满的水:整条。
-  const water = new Mesh(
-    new BoxGeometry(FORM.channelWidth - FORM.waterInset * 2, FORM.channelWall, span),
-    lambert(PALETTE.lapis.mid),
+  const water = piece(
+    FORM.channelWidth - FORM.waterInset * 2,
+    FORM.channelWall,
+    span,
+    FORM.channelWall * 0.5,
+    along,
+    PALETTE.lapis.mid,
   );
-  water.rotation.y = angle;
-  water.position.set(mid[0], mid[1] + FORM.channelWall * 0.5, mid[2]);
   water.visible = false;
   g.add(water);
 
   // 半满的水:只有靠源那半截,末端明明白白悬空。规格要求这是可见状态。
-  const half = new Mesh(
-    new BoxGeometry(FORM.channelWidth - FORM.waterInset * 2, FORM.channelWall, span * 0.55),
-    lambert(PALETTE.lapis.mid),
-  );
-  half.rotation.y = angle;
-  half.position.set(
-    start[0] + dx * 0.275,
-    mid[1] + FORM.channelWall * 0.5,
-    start[2] + dz * 0.275,
+  const halfLen = span * 0.55;
+  const half = piece(
+    FORM.channelWidth - FORM.waterInset * 2,
+    FORM.channelWall,
+    halfLen,
+    FORM.channelWall * 0.5,
+    // 靠源那一端:从槽的起点往前铺半截。
+    -full / 2 + inset + halfLen / 2,
+    PALETTE.lapis.mid,
   );
   half.visible = false;
   g.add(half);
-
-  // 出水口:末端一圈朝下的唇。水是从这里倒出去的 —— 有了它,渠的末端才像
-  // 「口」,不像被砍断的棍子;悬空的时候也才看得出「这里本该有东西接着」。
-  const lip = new Mesh(
-    new BoxGeometry(FORM.channelWidth + 0.14, FORM.channelWall * 1.5, 0.12),
-    lambert(PALETTE.sandstone.dark),
-  );
-  lip.rotation.y = angle;
-  lip.position.set(to[0] - ux * 0.03, to[1] - FORM.channelWall * 0.4, to[2] - uz * 0.03);
-  g.add(lip);
 
   return { group: g, water, half };
 }
@@ -244,58 +276,32 @@ export function buildWorld(level: Level, layout: Layout): BuiltWorld {
     host.group.add(group);
   }
 
+  // 哪块砖是池子的底,由数据说了算(`pool.on`),不靠比坐标猜。
+  const deckOf = new Map<PortId, (typeof level.pools)[number]>();
+  for (const p of level.pools) if (p.on) deckOf.set(p.on, p);
+
   for (const platform of level.platforms) {
     const place = layout.ports[platform.id];
     if (!place || !("at" in place)) continue;
-    const g = terrace(FORM.terraceSize * (platform.id === "ground" ? 2.4 : 1));
+    const host = deckOf.get(platform.id);
+    // 终点大池那块砖用赭金 —— 没有 HUD 也没有文字,玩家一眼认出目标全靠它。
+    const g = terrace(host?.grand ? "ochre" : "sandstone", host !== undefined);
     g.position.set(...place.at);
     mount(g, place);
     pieces.set(platform.id, g);
   }
 
-  for (const pool of level.pools) {
-    const place = layout.ports[pool.id];
+  for (const p of level.pools) {
+    const place = layout.ports[p.id];
     if (!place || !("at" in place)) continue;
     const g = new Group();
-    // 终点大池:更大、更精致、带一圈装饰角柱 —— 玩家一眼认得出目标在哪。
-    const scale = pool.grand ? 1.5 : 1;
-    g.add(terrace(FORM.terraceSize * scale, pool.grand ? "ochre" : "sandstone"));
-    if (pool.grand) {
-      for (const [cx, cz] of [
-        [1, 1],
-        [1, -1],
-        [-1, 1],
-        [-1, -1],
-      ]) {
-        const post = new Mesh(
-          new CylinderGeometry(0.075, 0.09, 0.42, 8),
-          lambert(PALETTE.ochre.light),
-        );
-        post.position.set(
-          (cx * FORM.terraceSize * scale) / 2.4,
-          FORM.terraceBody / 2 + 0.21,
-          (cz * FORM.terraceSize * scale) / 2.4,
-        );
-        g.add(post);
-      }
-    }
-    // 圆池,深蓝釉边框着水面 —— 参考图里池子都是圆的,方池读起来像地砖。
-    // 半径用 FORM.poolRadius,和渠道内缩用的是同一个常数。
-    const r = FORM.poolRadius * scale;
-    const rim = new Mesh(
-      new CylinderGeometry(r * 1.16, r * 1.16, 0.1, 24),
-      lambert(PALETTE.lapis.dark),
-    );
-    rim.position.y = FORM.terraceBody / 2 + FORM.terraceSlab + 0.01;
-    g.add(rim);
-    const w = new Mesh(new CylinderGeometry(r, r, 0.12, 24), lambert(PALETTE.lapis.mid));
-    w.position.y = FORM.terraceBody / 2 + FORM.terraceSlab + 0.03;
-    w.visible = !pool.isFinal;
+    const w = pool();
+    w.visible = !p.isFinal;
     g.add(w);
-    poolWater.set(pool.id, w);
+    poolWater.set(p.id, w);
     g.position.set(...place.at);
     mount(g, place);
-    pieces.set(pool.id, g);
+    pieces.set(p.id, g);
   }
 
   for (const c of level.channels) {
@@ -308,40 +314,58 @@ export function buildWorld(level: Level, layout: Layout): BuiltWorld {
   }
 
   // 兽:占位造型。穆什胡什的浮雕留到后面。
-  // 幼年的穆什胡什:小,圆,头大身子短 —— 头身比大是幼体的特征,也是「可爱」
-  // 的来源。造型仍是占位,但尺度定下来了。
+  // 幼年的穆什胡什:头大身子短 —— 头身比大是幼体的特征,也是「可爱」的来源。
+  // 造型仍是占位,但尺度是 §3.5 定死的:占一格,高约一个 TILE。
+  // 每一件的 position 都是 (0,0,0),姿势全烘进几何的原点。
   const beast = new Group();
   {
-    const body = new Mesh(new SphereGeometry(0.085, 12, 10), lambert(PALETTE.ochre.mid));
-    body.scale.set(1, 0.9, 1.25);
-    body.position.y = 0.085;
+    const body = new Mesh(
+      new SphereGeometry(BEAST.bodyRadius, 12, 10)
+        .scale(1, 0.9, 1.25)
+        .translate(0, BEAST.bodyY, 0),
+      lambert(PALETTE.ochre.mid),
+    );
     beast.add(body);
 
-    const head = new Mesh(new SphereGeometry(0.072, 12, 10), lambert(PALETTE.ochre.light));
-    head.position.set(0, 0.17, 0.07);
+    const head = new Mesh(
+      new SphereGeometry(BEAST.headRadius, 12, 10).translate(0, BEAST.headY, BEAST.headZ),
+      lambert(PALETTE.ochre.light),
+    );
     beast.add(head);
 
     // 蛇头的吻部,压扁一点点。
-    const snout = new Mesh(new SphereGeometry(0.036, 8, 8), lambert(PALETTE.ochre.light));
-    snout.scale.set(0.8, 0.7, 1.4);
-    snout.position.set(0, 0.15, 0.14);
+    const snout = new Mesh(
+      new SphereGeometry(BEAST.snoutRadius, 8, 8)
+        .scale(0.8, 0.7, 1.4)
+        .translate(0, BEAST.snoutY, BEAST.snoutZ),
+      lambert(PALETTE.ochre.light),
+    );
     beast.add(snout);
 
     // 蝎尾:向上翘,幼体的尾巴短。
-    const tail = new Mesh(new CylinderGeometry(0.012, 0.026, 0.13, 6), lambert(PALETTE.ochre.dark));
-    tail.rotation.x = -0.7;
-    tail.position.set(0, 0.13, -0.1);
+    const tail = new Mesh(
+      new CylinderGeometry(BEAST.tailRadius, BEAST.tailRadius * 2, BEAST.tailLength, 6)
+        .rotateX(BEAST.tailTilt)
+        .translate(0, BEAST.tailY, BEAST.tailZ),
+      lambert(PALETTE.ochre.dark),
+    );
     beast.add(tail);
 
     // 四条短腿。
     for (const [lx, lz] of [
-      [0.045, 0.06],
-      [-0.045, 0.06],
-      [0.045, -0.06],
-      [-0.045, -0.06],
+      [1, 1],
+      [-1, 1],
+      [1, -1],
+      [-1, -1],
     ]) {
-      const leg = new Mesh(new CylinderGeometry(0.016, 0.014, 0.07, 6), lambert(PALETTE.ochre.dark));
-      leg.position.set(lx, 0.035, lz);
+      const leg = new Mesh(
+        new CylinderGeometry(BEAST.legRadius, BEAST.legRadius * 0.9, BEAST.legHeight, 6).translate(
+          lx * BEAST.legSpreadX,
+          BEAST.legHeight / 2,
+          lz * BEAST.legSpreadZ,
+        ),
+        lambert(PALETTE.ochre.dark),
+      );
       beast.add(leg);
     }
   }
@@ -474,7 +498,10 @@ export function createStage(canvas: HTMLCanvasElement, level: Level, layout: Lay
   function setBeast(port: PortId): void {
     const place = layout.ports[port];
     if (!place || !("at" in place)) return;
-    beastWant = [place.at[0], place.at[1] + FORM.terraceBody / 2 + FORM.terraceSlab, place.at[2]];
+    // 露台的原点**就是**它的顶面,所以兽踩的高度就是 port 的 y —— 不用再
+    // 心算厚度。这一行以前是 `+ terraceBody/2 + terraceSlab`,那是旧原点的
+    // 遗物,厚度一改就悄悄错位。
+    beastWant = [place.at[0], place.at[1], place.at[2]];
     if (!beastShown) {
       beastShown = [...beastWant];
       beast.position.set(...beastShown);
@@ -503,7 +530,7 @@ export function createStage(canvas: HTMLCanvasElement, level: Level, layout: Lay
         }
         if (moving) {
           // 走的时候微微起伏,像迈步。
-          const bob = Math.sin(performance.now() / 90) * 0.03;
+          const bob = Math.sin(performance.now() / 90) * BEAST.bob;
           beast.position.set(beastShown[0], beastShown[1] + bob, beastShown[2]);
         } else {
           beast.position.set(...beastShown);

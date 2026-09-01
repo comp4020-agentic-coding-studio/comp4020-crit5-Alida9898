@@ -17,15 +17,24 @@ import type { Level } from "../rules.ts";
 export const level1: Level = {
   name: "转一下,渠就接上了",
 
+  // `on` 是这个池子嵌在哪块砖里。声明出来,而不是让渲染器去比坐标猜 ——
+  // 「哪块砖是池子的底」和连通一样,是数据说了算的事。
   pools: [
-    { id: "spring" },
-    { id: "grandBasin", isFinal: true, grand: true },
+    { id: "spring", on: "springDeck" },
+    { id: "grandBasin", on: "basinDeck", isFinal: true, grand: true },
   ],
 
   // 一条渠,一个断口。这一关只有它。
   channels: [{ id: "aqueduct", ends: ["spring", "grandBasin"] }],
 
-  platforms: [{ id: "birth" }, { id: "walkway" }],
+  // springDeck / basinDeck 是池子坐进去的那块砖。它们不参与任何连通声明 ——
+  // 兽走的是 spring 这个池子本身(站在池子上引水),砖只是池子的底。
+  platforms: [
+    { id: "birth" },
+    { id: "walkway" },
+    { id: "springDeck" },
+    { id: "basinDeck" },
+  ],
 
   tapPoints: [],
   parts: [],
@@ -67,6 +76,8 @@ export const level1Layout: Layout = {
     birth: { at: [1, 1, 0] },
     walkway: { at: [1, 1, 1] },
     spring: { at: [1, 1, 2] },
+    // 和 spring 同格:池子就嵌在这块砖里,不是挨着它。
+    springDeck: { at: [1, 1, 2] },
     // 渠只跨一格。原本跨两格 —— 一根棍子伸出去那么远、末端还悬着,
     // 读起来不像水利工程。
     aqueduct: { from: [1, 1, 2], to: [1, 1, 3] },
@@ -77,5 +88,6 @@ export const level1Layout: Layout = {
     // 消失,看起来是两个池子直接贴在一起,那个「接上了」根本没被看见。
     // 放到远端,遮挡关系就反过来:渠口在前,大池在后,水从渠口倒下去。
     grandBasin: { at: [2, 0, 2] },
+    basinDeck: { at: [2, 0, 2] },
   },
 };

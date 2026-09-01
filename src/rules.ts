@@ -10,8 +10,9 @@ export type PortId = string;
 export type PartId = string;
 export type Turn = 0 | 1 | 2 | 3;
 
-/** `isSource` 不再存在:任何池子都能当水源,取决于兽站在哪一个上面。 */
-export type Pool = { id: PortId; isFinal?: boolean; grand?: boolean };
+/** `isSource` 不再存在:任何池子都能当水源,取决于兽站在哪一个上面。
+ *  `on` 是这个池子嵌在哪块砖里 —— 声明出来,不让渲染器去比坐标猜。 */
+export type Pool = { id: PortId; on?: PortId; isFinal?: boolean; grand?: boolean };
 export type Channel = { id: PortId; ends: [PortId, PortId] };
 export type Platform = { id: PortId };
 export type TapPoint = { id: PortId; on: PortId };

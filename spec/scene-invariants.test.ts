@@ -36,10 +36,15 @@ const BUDGET = {
   platform: 3,
   /** §3.5:一个内嵌的圆柱,直径 0.8 TILE。就一个。 */
   pool: 1,
-  /** §3.5:一条 1 tile 宽的槽。 */
-  channel: 1,
-  /** 兽。 */
-  beast: 1,
+  /** 槽底 + 两道边墙 + 满水 + 半水。
+   *
+   *  满水和半水非得是两件不可:规则 4 要求「水流到一半停住、末端悬空」是一个
+   *  **可见状态**,那就得有两个能各自显隐的 mesh。边墙留着是因为空渠得看得出
+   *  是「一条现在还空着的路」—— 那个轮廓替代了文字教程。 */
+  channel: 5,
+  /** 兽:body / head / snout / tail / 四条腿。它是唯一的角色,不是布景;
+   *  §3.5 把它列进几何词汇表但没给 primitive 上限。 */
+  beast: 8,
 } as const;
 
 /** §3.5:一切都由 Three.js 内置 primitive 搭出来,而且只有这几种。 */
@@ -111,24 +116,24 @@ for (const { name, level, layout } of LEVELS) {
 
     it("把每个池子嵌进它所在的平台里,不让它凸出来", () => {
       const { built } = stage(level, layout);
-      // 平台顶面 = 盖住池心的那些 box 里最高的一个顶。池子是圆柱,不会把自己
-      // 算进去,所以这个比较不是循环的。
-      const boxes = meshesIn(built.world).filter((m) => m.geometry instanceof BoxGeometry);
-      const tops = boxes.map((m) => ({ box: new Box3().setFromObject(m) }));
+      for (const p of level.pools) {
+        // 「所在平台」是数据说的(`pool.on`),不是这里比坐标猜出来的 —— 猜出来
+        // 的版本会把池子自己算进候选,变成拿自己和自己比。
+        expect(p.on, `${p.id} 没声明它嵌在哪块砖里`).toBeTruthy();
+        const deck = built.pieces.get(p.on as string);
+        expect(deck, `${p.id} 声明的 ${p.on} 不存在`).toBeTruthy();
 
-      for (const [id, mesh] of built.poolWater) {
-        const pool = new Box3().setFromObject(mesh);
-        const cx = (pool.min.x + pool.max.x) / 2;
-        const cz = (pool.min.z + pool.max.z) / 2;
-        const under = tops.filter(
-          ({ box }) => box.min.x <= cx && cx <= box.max.x && box.min.z <= cz && cz <= box.max.z,
-        );
-        expect(under.length, `${id} 的池子底下没有任何平台`).toBeGreaterThan(0);
-        const platformTop = Math.max(...under.map(({ box }) => box.max.y));
+        const water = built.poolWater.get(p.id);
+        expect(water, `${p.id} 没有水面`).toBeTruthy();
+
+        // 池沿 = 那块砖最高的一点。水面必须在它之下 —— 这就是「内嵌」的全部
+        // 含义:一个盆里的水面低于盆沿。
+        const rim = new Box3().setFromObject(deck as never).max.y;
+        const top = new Box3().setFromObject(water as never).max.y;
         expect(
-          pool.max.y,
-          `${id} 的池子顶面 (${pool.max.y.toFixed(3)}) 高过平台顶面 (${platformTop.toFixed(3)}) —— 是凸出来的,不是内嵌`,
-        ).toBeLessThanOrEqual(platformTop + 1e-9);
+          top,
+          `${p.id} 的水面 (${top.toFixed(3)}) 高过 ${p.on} 的池沿 (${rim.toFixed(3)}) —— 是凸出来的,不是内嵌`,
+        ).toBeLessThanOrEqual(rim + 1e-9);
       }
     });
 
