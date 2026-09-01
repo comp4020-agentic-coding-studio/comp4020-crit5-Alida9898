@@ -1,69 +1,77 @@
 # PLAN.md
 
-The current round's scope. Read this before starting; do only what it describes.
+当轮范围。开工前读这个,只做这里写的。
 
-## Where the code stands against the spec
+## 现状与规格的差距
 
-The specification in `CLAUDE.md` supersedes what is currently built. The gap is
-not cosmetic — the central mechanic is different.
+`CLAUDE.md` 里的规格取代了之前建好的东西。差的不是皮,是核心机制。
 
-| | built now | the spec |
+| | 之前建的 | 规格要求 |
 |---|---|---|
-| what the player turns | **terraces**, camera fixed | **the camera**, building fixed |
-| connectivity keyed on | which way each terrace is turned | which camera angle is showing |
-| kinds of link | one (`Seam`) | **two** — `waterLinks` and `walkLinks`, judged separately |
-| filled channels | no such state | become **walkable**, irreversibly |
-| the mušḫuššu | a static marker | walks; **water only runs while it stands on a tap** |
-| winning | water reaches the goal | the **final pool fills** |
-| materials | `MeshBasicMaterial`, unlit | `MeshLambertMaterial`, two lights |
-| palette | 4 flat colours | 4 hues × 3 tones + background |
+| 玩家转的是 | **露台**,相机不动 | **相机**,建筑不动 |
+| 连通表按什么索引 | 每块露台转到第几档 | 当前是哪个相机角度 |
+| 连接有几种 | 一种 | **两种** — `waterLinks` 和 `walkLinks`,分开判定 |
+| 灌满的渠 | 没这个状态 | 变成**可行走路面**,且不可逆 |
+| 引水兽 | 静态标记 | 会走;**它站在取水点上水才流** |
+| 通关条件 | 水抵达终点 | **终点大池被填满** |
+| 材质 | `MeshBasicMaterial`,不受光 | `MeshLambertMaterial` + 两盏灯 |
+| 色板 | 4 个单色 | 4 色相 × 3 档 + 背景 |
 
-So `illusion.ts`, `gardens.ts`, `ziggurat.ts` and `play.ts` are rewritten, not
-adapted. `spec/illusion.test.ts` keeps its *method* — project both ends of a
-declared link and check the model still says what the table says — but is
-rewritten against the new shape.
+所以 `illusion.ts`、`gardens.ts`、`ziggurat.ts`、`play.ts` 是**重写**,不是改。
+留下来的只有 `CLAUDE.md`、invariants,以及"把约束变成传感器"这个做法本身。
 
-What survives untouched: `CLAUDE.md`, the invariants, and the habit of turning
-each constraint into a sensor.
+## 操作方式(已确认)
 
-## Round 1 — foundations (this round)
+- **点击就是全部操作。不用方向键。**
+- 点到兽走得到的地方 → 兽走过去。
+- 点其他任何地方 → 相机转到下一个角度。
+- 第一关兽不需要移动,所以点哪里都是转相机,玩家一次就学会。
+- 转动动画期间不接受任何输入,也不做任何连通判定(规格三)。
 
-1. `src/config/style.ts`: every tunable named in one place — camera pitch and
-   the azimuth enumeration, frustum size, transition duration and easing, both
-   lights, tone mapping exposure, the full three-tone palette, and the terrace
-   and step proportions.
-2. `src/rules.ts`: the `Level` shape exactly as specified, plus the two pure
-   judgements over it — which channels fill, and where the beast can walk —
-   each a table lookup and nothing else.
-3. `src/levels/level1.ts`: **data first, shown for confirmation before any
-   rendering or logic is written against it** (spec §8).
-4. `spec/rules.test.ts`: the five rules as tests. In particular the two that
-   are easy to lose — that a half-filled channel is *not* walkable, and that
-   filling is irreversible while walkability is not.
+## 四个相机角度
 
-Not this round: rendering, the beast's movement, levels 2–4.
+方位角枚举 `45 / 135 / 225 / 315`,俯角固定 33°。
 
-## The sensors this shape needs
+俯视看,相机站在建筑的四个对角方向,每次转 90°,建筑本身不动。
 
-Connectivity is declared, so nothing may derive it. But tests may still check
-the declarations are coherent, and these are the ones worth having:
+用 45 系列而不是 0/90:方位角 0° 时相机正对一个面,看到的是正视图,不是等距;
+45° 时一根竖棱正对相机,三面各露一部分。**只有等距下,隔着几层楼的两条边才可能
+在屏幕上像素级重合**,这是整个错觉的前提。
 
-- every id named in a link exists among the pools, channels and platforms
-- no channel claims an end that is not a pool
-- a `walkLink` naming a channel is only ever live once that channel is filled
-- every level is solvable from its opening state, by some sequence of camera
-  angles and tap visits — and is **not** already solved on arrival
-- water never runs to a port the tables call higher at that angle
+单向循环:一次点击转一格,转四次回到原点。
 
-## Open questions
+## 第一轮 · 地基(已完成)
 
-1. **How does the beast move?** The spec says it walks and stands, and that the
-   player is on desktop with click, arrows and Space. Click a reachable
-   platform to walk there is the obvious reading, and arrows/Space then need a
-   job — or they are the camera. Which pair is which?
-2. **Are camera angles a ring or a list?** Four azimuths at 90° apart, cycled
-   one way by one key, is the simplest thing that matches "finite enumeration"
-   and a fixed transition. Confirm four, and whether they cycle both ways.
-3. **§5 level 1 says the beast does not take part** — so level 1 has no tap
-   point at all, and water runs from the start. Confirm: the first thing the
-   player ever does is turn the camera, with nothing else on screen.
+1. `src/config/style.ts` — 全部可调参数集中一处。
+2. `src/rules.ts` — 五条规则,全是查表,零几何运算。
+3. `src/levels/level1.ts` — 数据字面量。
+4. `spec/rules.test.ts` + `spec/style.test.ts`。
+
+## 第二轮 · 渲染与操作(当轮)
+
+1. `src/scene/` — Lambert 材质 + 两盏灯;露台三件套(主体 / 顶面薄板 / 檐口);
+   分段柱子;有厚度的台阶;砖砌水渠。
+2. 相机:正交,四角度枚举,固定过渡动画;动画期间封锁输入与判定。
+3. 水的三种可见状态:不流 / **流到一半停住(末端悬空)** / 灌满。
+   第二种是规格明确要求的可见失败态,必须画出来,不许用逻辑绕开。
+4. 点击:命中兽可达的落点则走,否则转相机。
+5. 兽:占位造型(穆什胡什的浮雕造型留到后面),会站会走。
+
+本轮不做:第二至四关、植物生长、通关串场。
+
+## 已经在用的传感器
+
+连通是声明的,所以**任何代码都不许推导它**。但测试可以检查声明本身自洽:
+
+- link 里出现的 id 必须真实存在
+- 每条渠的两端必须是真的池子
+- 引用了渠的 `walkLink`,只有该渠灌满后才生效
+- 每关从开局状态必须可解,且**开局不能已经是解**
+- 半满的渠**不可行走**——这条和下一条是最容易被"顺手统一一下"删掉的
+- 灌满不可逆,而可行走**是**可逆的(换个角度就断)
+
+## 还没定的
+
+1. 第三关那个"任何角度都接不上的断口",要几块平台才读得出来"这里过不去"?
+   等第二轮的画面出来再定,盲写会错。
+2. 终点大池"水位渐进上涨"的时长——需要看着调。

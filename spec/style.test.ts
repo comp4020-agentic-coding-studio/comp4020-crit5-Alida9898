@@ -80,9 +80,16 @@ describe("contrast, measured rather than remembered", () => {
 });
 
 describe("the render constraints hold", () => {
-  it("keeps the camera pitch in the range the illusion needs", () => {
+  it("sits at the one pitch where whole-number cells coincide exactly", () => {
+    // The spec asks for 30–35 AND for pixel-exact coincidence. Only
+    // atan(1/√2) = 35.264° delivers the second: the compensation ratio is
+    // √2/tan(pitch), which is 2 there and irrational either side. Anything
+    // else leaves the two edges a hair apart — the exact failure the spec
+    // rules out perspective for.
     expect(CAMERA.pitchDeg).toBeGreaterThanOrEqual(30);
-    expect(CAMERA.pitchDeg).toBeLessThanOrEqual(35);
+    expect(CAMERA.pitchDeg).toBeCloseTo((Math.atan(1 / Math.SQRT2) * 180) / Math.PI, 6);
+    const ratio = Math.SQRT2 / Math.tan((CAMERA.pitchDeg * Math.PI) / 180);
+    expect(ratio, "one storey up must be exactly two cells back").toBeCloseTo(2, 9);
   });
 
   it("enumerates the azimuths, evenly, with no duplicates", () => {

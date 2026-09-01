@@ -83,10 +83,46 @@ describe("rule 2 and 4: a channel fills only when BOTH ends are anchored", () =>
   });
 
   it("stops water in mid-channel when only one end is anchored", () => {
-    // The decoy angle. This is a legitimate visible state, not a bug — water
-    // standing in a channel whose far end hangs over nothing.
-    expect(fillingNow(level1, at(135))).toEqual([]);
-    expect(halfFilled(level1, at(135))).toEqual(["aqueduct"]);
+    // A legitimate visible state, not a bug — water standing in a channel
+    // whose far end hangs over nothing. Level 1 has no angle that does this
+    // (the geometry does not allow one end to meet the source at two
+    // different angles), so it is pinned on a purpose-built board here. This
+    // is the state level 3 is built around.
+    const dangling: Level = {
+      name: "dangling",
+      pools: [
+        { id: "src", isSource: true },
+        { id: "dst", isFinal: true },
+      ],
+      channels: [{ id: "run", ends: ["src", "dst"] }],
+      platforms: [],
+      tapPoints: [],
+      cameraAngles: {
+        45: { waterLinks: [["src", "run"]], walkLinks: [] },
+        135: { waterLinks: [], walkLinks: [] },
+        225: {
+          waterLinks: [
+            ["src", "run"],
+            ["run", "dst"],
+          ],
+          walkLinks: [],
+        },
+        315: { waterLinks: [], walkLinks: [] },
+      },
+      opensAt: 45,
+    };
+    const stalled = begin(dangling);
+    expect(fillingNow(dangling, stalled)).toEqual([]);
+    expect(halfFilled(dangling, stalled)).toEqual(["run"]);
+    // And it is not walkable while it hangs there — rule 4.
+    expect(settle(dangling, stalled).filled.size).toBe(0);
+  });
+
+  it("does nothing at the angles level 1 leaves dead", () => {
+    for (const angle of [135, 315] as Azimuth[]) {
+      expect(fillingNow(level1, at(angle))).toEqual([]);
+      expect(halfFilled(level1, at(angle))).toEqual([]);
+    }
   });
 
   it("fills when both ends are anchored", () => {

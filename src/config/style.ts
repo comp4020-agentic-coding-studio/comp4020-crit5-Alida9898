@@ -22,8 +22,15 @@ export type Tone = keyof (typeof PALETTE)["sandstone"];
  *  four values. A finite enumeration is what makes a hand-written table per
  *  angle possible at all. */
 export const CAMERA = {
-  /** Degrees above the horizon. The spec fixes this in 30–35. */
-  pitchDeg: 33,
+  /**
+   * 俯角。规格写 30–35,这里取 35.264 —— 也就是 atan(1/√2),真正的等距角。
+   *
+   * 它是这个区间里**唯一**让整数格点精确重合的值:y 升 1、x 和 z 各升 1 时,
+   * 屏幕位置完全不变。补偿比是 √2 / tan(俯角) —— 33° 给 2.178,30° 给 2.449,
+   * 都不是整数,于是「隔着一层楼的两条边像素级重合」就永远差一点。
+   * 规格自己要求的就是那个精确重合,所以这里跟着几何走。
+   */
+  pitchDeg: 35.264389682754654,
   /** The only azimuths that exist, in cycling order. */
   azimuthsDeg: [45, 135, 225, 315] as const,
   /** Half-height of the orthographic frustum, in world units. */
