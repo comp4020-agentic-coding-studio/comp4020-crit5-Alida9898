@@ -117,6 +117,14 @@ Three things that cost time the first run:
   answers `Unknown command`. Same for `device` and `media`.
 - **`set viewport` needs a `reload`** before the screenshot, or you photograph
   the old layout.
+- **`ab errors` keeps a buffer across navigations, and a stale entry is
+  indistinguishable from a live bug.** An error thrown by the module you saved
+  thirty seconds ago is still listed after `ab open` on a fresh URL, with the
+  old `?t=` timestamp still in the stack trace --- so it reads as "the page is
+  broken right now". Two ways to tell: `ab errors --json` shows the `?t=`
+  timestamp (an old one is stale), and `ab close --all` before reopening
+  clears it for real. `--clear` alone did not. Check what the page actually
+  *does* before believing the buffer.
 - **`ab click <selector>` has silently done nothing** where
   `ab eval "document.querySelector('…').click()"` worked. A no-op click looks
   exactly like a page that ignored the click, so it is worth reaching for `eval`

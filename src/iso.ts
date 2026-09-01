@@ -54,6 +54,31 @@ export function project(p: Vec3, azimuthDeg: Azimuth): [number, number] {
   return [sx, sy];
 }
 
+/** 正交视锥的四条边,单位和 `project()` 吐出来的一样。 */
+export type Frustum = { left: number; right: number; top: number; bottom: number };
+
+/**
+ * 投影坐标 → 画面比例(0–1,y 向下)。覆盖层上每个按钮的位置都从这里出来。
+ *
+ * 它必须吃**当前的**视锥,不能假设视锥是正方形。这条是拿一次回归换来的:
+ * 视锥改成按宽高比撑长边之后,`toScreen` 里还留着「除以那个正方形的 half」的
+ * 手算,16:9 下横向差了 1.78 倍,整排按钮被推到画面外 —— 点不到、兽不走、
+ * 连点击涟漪都不出现,而画面本身一切正常,所以看起来完全不像定位问题。
+ *
+ * §3.3 禁止在覆盖层定位里做角度运算,理由是同一类:凡是手抄一遍相机的东西,
+ * 相机一变就悄悄过期。这个函数把「相机现在的视锥」变成参数,过期就没地方藏。
+ */
+export function frameFraction(
+  sx: number,
+  sy: number,
+  f: Frustum,
+): { x: number; y: number } {
+  return {
+    x: (sx - f.left) / (f.right - f.left),
+    y: 1 - (sy - f.bottom) / (f.top - f.bottom),
+  };
+}
+
 /** 相机站的位置方向(单位向量)。正交投影下距离无所谓,方向才重要。 */
 export function eye(azimuthDeg: Azimuth): Vec3 {
   const az = azimuthDeg * RAD;

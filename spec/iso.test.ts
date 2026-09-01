@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { CAMERA } from "../src/config/style.ts";
 import type { Layout } from "../src/iso.ts";
-import { anchorsOf, project, turnedAround } from "../src/iso.ts";
+import { anchorsOf, frameFraction, project, turnedAround } from "../src/iso.ts";
 import { level1, level1Layout } from "../src/levels/level1.ts";
 import type { Config, Level, PartId, Turn } from "../src/rules.ts";
 import { holds } from "../src/rules.ts";
@@ -95,6 +95,48 @@ describe("等距投影本身", () => {
     for (let i = 0; i < 4; i++) at = turnedAround(at, pivot, 1);
     expect(at[0]).toBeCloseTo(p[0], 6);
     expect(at[2]).toBeCloseTo(p[2], 6);
+  });
+});
+
+describe("覆盖层的换算,吃的是当前视锥", () => {
+  // 这条是拿一次回归换来的。视锥从写死的正方形改成按宽高比撑长边之后,
+  // `toScreen` 里还留着「除以那个正方形的 half」的手算 —— 16:9 下横向差了
+  // 1.78 倍,整排按钮被推到画面外,点不到、兽不走、连点击涟漪都不出现,
+  // 而画面本身一切正常,所以完全不像一个定位问题。
+  //
+  // 画面好不好看没有传感器,但「按钮落在它该落的地方」有。
+
+  it("视锥中心永远落在画面正中", () => {
+    for (const [w, h] of [
+      [1, 1],
+      [16, 9],
+      [9, 16],
+    ]) {
+      const f = { left: -w, right: w, top: h, bottom: -h };
+      const c = frameFraction(0, 0, f);
+      expect(c.x, `${w}:${h} 下中心偏了`).toBeCloseTo(0.5, 12);
+      expect(c.y, `${w}:${h} 下中心偏了`).toBeCloseTo(0.5, 12);
+    }
+  });
+
+  it("四条边就是 0 和 1,y 是向下的", () => {
+    const f = { left: -16, right: 16, top: 9, bottom: -9 };
+    expect(frameFraction(-16, 0, f).x).toBeCloseTo(0, 12);
+    expect(frameFraction(16, 0, f).x).toBeCloseTo(1, 12);
+    // 屏幕 y 越大越靠上,画面比例越大越靠下,所以这两个是反的。
+    expect(frameFraction(0, 9, f).y).toBeCloseTo(0, 12);
+    expect(frameFraction(0, -9, f).y).toBeCloseTo(1, 12);
+  });
+
+  it("非正方视锥下,横竖两轴各按各的边算 —— 把视锥当正方形会在这里红", () => {
+    // 16:9 的视锥,取一个横向到一半、纵向到一半的点。
+    const f = { left: -16, right: 16, top: 9, bottom: -9 };
+    const p = frameFraction(8, 4.5, f);
+    expect(p.x).toBeCloseTo(0.75, 12);
+    expect(p.y).toBeCloseTo(0.25, 12);
+    // 「两轴都除以短边的一半」的那个写法会把 x 算成 0.75 以外的数。
+    const square = (8 - -9) / (9 - -9);
+    expect(square).not.toBeCloseTo(p.x, 3);
   });
 });
 

@@ -26,7 +26,7 @@ import { ACESFilmicToneMapping } from "three";
 import { BACKGROUND, BEAST, CAMERA, FORM, LIGHT, PALETTE, RENDER, TILE } from "./config/style.ts";
 import type { Azimuth } from "./config/style.ts";
 import type { Layout, Placement, Vec3 } from "./iso.ts";
-import { project, turnedAround } from "./iso.ts";
+import { frameFraction, project, turnedAround } from "./iso.ts";
 import type { Level, PartId, PortId, Turn } from "./rules.ts";
 
 /** 相机沿对角线退多远。正交投影下不影响画面,只要越过近裁面。 */
@@ -609,10 +609,14 @@ export function createStage(canvas: HTMLCanvasElement, level: Level, layout: Lay
         sx += x / pts.length;
         sy += y / pts.length;
       }
-      return {
-        x: (sx - midX + half) / (2 * half),
-        y: 1 - (sy - midY + half) / (2 * half),
-      };
+      // 换算用相机**当前的**视锥边界,不用建相机时那个 half。
+      //
+      // 这里一度写的是 `(sx - midX + half) / (2 * half)` —— 那等于把视锥当成
+      // 永远是正方形。视锥改成按宽高比撑长边的那一刻,16:9 下横向就差了 1.78 倍,
+      // 按钮整排被推到画面外:点不到兽不走,连点击涟漪都不出现,而画面本身
+      // 一切正常。§3.3 的原话是「覆盖层定位只能把世界坐标穿过相机投影」,
+      // 手算一遍 NDC 就是这条禁令要防的东西。
+      return frameFraction(sx, sy, camera);
     },
     resize: (w, h) => {
       renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
