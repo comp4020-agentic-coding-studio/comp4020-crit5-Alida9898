@@ -138,6 +138,36 @@ h1 {
   }
 }
 
+/* 点了哪里,那里荡开一圈。
+   兽是走过去的、不是瞬移,所以从点下去到它挪动之间有一段空白 —— 不填,那一下
+   就像没被收到。这一圈只说「收到了,是这里」,说完就没,不留任何常驻的东西在
+   画面上(§6 不做 HUD)。 */
+.ripple {
+  position: absolute;
+  width: clamp(2.6rem, 5vw, 3.6rem);
+  height: clamp(2.6rem, 5vw, 3.6rem);
+  border: 2px solid var(--lapis-dark);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+
+  /* 时长由 `INPUT.rippleMs` 逐个元素写在 style 上,永远盖过这里 —— 这一行
+     只是没有内联值时的兜底。要调时长,改 style.ts,不改这里。 */
+  animation: ripple 520ms ease-out forwards;
+}
+
+@keyframes ripple {
+  from {
+    opacity: 0.85;
+    scale: 0.35;
+  }
+
+  to {
+    opacity: 0;
+    scale: 2.1;
+  }
+}
+
 /* 键盘用户仍然需要看见焦点在哪。 */
 .handle:focus-visible {
   outline: 3px solid var(--lapis-dark);
@@ -172,6 +202,13 @@ h1 {
 @media (prefers-reduced-motion: reduce) {
   .attap canvas {
     animation: none;
+  }
+
+  /* 动画不播,涟漪也就不出现。ripple.ts 里那个兜底计时器就是为这一刻留的:
+     `animationend` 永远不来,元素得靠它自己摘掉。 */
+  .ripple {
+    animation: none;
+    opacity: 0;
   }
 
   .stage {

@@ -6,6 +6,7 @@
 
 import { CAMERA, INPUT } from "./config/style.ts";
 import { turnFromDrag } from "./gesture.ts";
+import { rippleAt } from "./ripple.ts";
 import type { Layout } from "./iso.ts";
 import { level1, level1Layout } from "./levels/level1.ts";
 import type { Level, PartId, State } from "./rules.ts";
@@ -107,7 +108,12 @@ export function mount(el: Elements): () => void {
       b.style.left = `${x * 100}%`;
       b.style.top = `${y * 100}%`;
       b.setAttribute("aria-label", `露台 ${part}`);
-      b.addEventListener("click", () => act(part));
+      b.addEventListener("click", () => {
+        // 涟漪挂在 stage 上,不挂在按钮上 —— 按钮下一帧就被 placeHandles()
+        // 换掉了,挂在它身上的动画一帧都放不完。
+        rippleAt(el.stage, x, y, INPUT.rippleMs);
+        act(part);
+      });
       buttons.push(b);
     }
 
@@ -127,6 +133,8 @@ export function mount(el: Elements): () => void {
       b.setAttribute("aria-label", port);
       b.addEventListener("click", () => {
         if (locked) return;
+        // 「我点的是这里」的回执。兽要走一段才到,不填这段空白,点击就像没被收到。
+        rippleAt(el.stage, x, y, INPUT.rippleMs);
         state = { ...state, beastAt: port };
         stage?.setBeast(port);
         resolve();

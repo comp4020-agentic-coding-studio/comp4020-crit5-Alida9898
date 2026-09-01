@@ -64,6 +64,9 @@ export const LIGHT = {
 export const INPUT = {
   /** 横向拖过这么多 CSS 像素,就落一档转向。 */
   dragTurnPx: 90,
+  /** 点击落点上那圈涟漪荡开的时长。它是「我点的是这里」的全部回执 ——
+   *  兽要走一段才到,中间这段空白不填,点击就像没被收到。 */
+  rippleMs: 520,
 } as const;
 
 export const RENDER = {
