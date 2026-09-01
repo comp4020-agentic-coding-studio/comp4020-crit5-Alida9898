@@ -11,6 +11,7 @@ import {
   pour,
   reachable,
   standingOnPool,
+  wetPools,
   turnCamera,
   walkableFrom,
 } from "../src/rules.ts";
@@ -137,6 +138,26 @@ describe("规则 3:兽站在池子上,水才流", () => {
     expect(fromMid.has("lower"), "该往下游走").toBe(true);
     expect(fromMid.has("upper"), "水倒着流回上游了").toBe(false);
     expect(fromMid.has("top"), "水倒着流回上游了").toBe(false);
+  });
+
+  it("兽离开之后,大池里的水也不回退 —— 画出来的那份状态也得遵守规则 3", () => {
+    // 这条是从画面上抓回来的:通关之后把兽点走,大池的水**消失了**,喷泉还在喷。
+    //
+    // 下面那条测试早就在了,而且一直是绿的 —— 它盯的是 `filled`,一个只增不减
+    // 的集合。漏掉的是:画水用的是另一个计算(`reachable`,从兽此刻站着的池子
+    // 实时漫出去),两者从来没被要求一致。规则测试盯着规则,而画面在旁边违反它。
+    //
+    // 第一关这只是「走开一下水没了」;第三、四关的玩法就是灌满渠之后走过去、
+    // 走到第二个取水点,兽在通关之前就必须离开池子,那时这是致命的。
+    const won = pour(level1, at("spring", SOLVED));
+    expect(won.filled.has("aqueduct"), "先得真的灌满").toBe(true);
+    expect(wetPools(level1, won).has("grandBasin"), "灌满的那一刻大池该有水").toBe(true);
+
+    const left = { ...won, beastAt: "birth" as PortId };
+    expect(
+      wetPools(level1, left).has("grandBasin"),
+      "兽一走开,大池的水就没了 —— 规则 3 说已经发生的不回退",
+    ).toBe(true);
   });
 
   it("兽离开之后,已经发生的不回退", () => {

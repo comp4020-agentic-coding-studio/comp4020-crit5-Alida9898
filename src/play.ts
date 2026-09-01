@@ -17,6 +17,7 @@ import {
   halfFilled,
   pour,
   reachable,
+  wetPools,
   standingOnPool,
   turn,
   turnCamera,
@@ -43,7 +44,10 @@ export function mount(el: Elements): () => void {
   let timer: ReturnType<typeof setTimeout> | undefined;
 
   function paintWater(): void {
-    stage?.setWater(state.filled, halfFilled(level, state), reachable(level, state));
+    // 第三个参数是「哪些池子有水」,用的是 `wetPools` 不是 `reachable` ——
+    // 后者从兽此刻站着的池子实时漫出去,兽一走开水就消失,而规则 3、4 都写着
+    // 已经发生的不回退。
+    stage?.setWater(state.filled, halfFilled(level, state), wetPools(level, state));
   }
 
   /** 只重画,不引水 —— 水只在按空格时流(规则 3)。 */

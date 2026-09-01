@@ -162,6 +162,28 @@ export function reachable(level: Level, state: State): Set<PortId> {
   return source ? reachableFrom(level, state, source) : new Set<PortId>();
 }
 
+/**
+ * 哪些池子里**有水**。
+ *
+ * 不是 `reachable()`。`reachable()` 从兽此刻站着的那口池子实时漫出去,兽一走开
+ * 就漫不到了 —— 拿它去画水,大池的水会在兽离开的瞬间消失。而规则 3 的原话是
+ * 「兽离开之后,已经发生的不回退」,规则 4 是「灌满不可逆」。
+ *
+ * 所以答案是两部分的并集:此刻正漫到的(水正在流,画面要跟着动),加上**已灌满
+ * 的渠的两端**(那是只增不减的状态,已经发生的事)。
+ *
+ * 这个 bug 在第一关只是「通关后走开一下水没了」,但第三、四关的玩法就是灌满渠
+ * 之后走过去、走到第二个取水点 —— 兽在通关之前就必须离开池子,那时它是致命的。
+ */
+export function wetPools(level: Level, state: State): Set<PortId> {
+  const wet = reachable(level, state);
+  for (const c of level.channels) {
+    if (!state.filled.has(c.id)) continue;
+    for (const end of c.ends) wet.add(end);
+  }
+  return wet;
+}
+
 /** 规则 4:两端都锚到池子的渠 —— 这些会灌满。 */
 export function fillingNow(level: Level, state: State): PortId[] {
   const wet = reachable(level, state);
