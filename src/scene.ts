@@ -129,9 +129,10 @@ function pool(): Mesh {
  * 一段砖砌水渠。
  *
  * 逻辑锚点是两端的**中心点**(对齐判定用的就是它),但画出来的渠要从池沿起、
- * 到出水口止 —— 否则它是一根从池心长出来、又戳进另一个池心的棍子,读起来是
- * 两个物件穿模,不是水利工程。所以这里把起点往里收一个池半径,末端留一个
- * 朝下的唇。
+ * 到**另一头的池沿**止 —— 两头都收,不是只收一头。只收上游那头时,下游端面
+ * 正落在对面池心上,于是渠整条戳进大池、盖住它一半水面,读起来是两个物件穿模,
+ * 不是水利工程。两头各收一个池半径,渠的端面就和两边的水面正好相切:挨着,
+ * 不重叠。
  */
 function channel(from: Vec3, to: Vec3): { group: Group; water: Mesh; half: Mesh } {
   const g = new Group();
@@ -145,13 +146,12 @@ function channel(from: Vec3, to: Vec3): { group: Group; water: Mesh; half: Mesh 
   // 里面每一件 mesh 的 position 都是 (0,0,0)。
   g.position.set((from[0] + to[0]) / 2, (from[1] + to[1]) / 2, (from[2] + to[2]) / 2);
 
-  // 从池沿出发,不从池心 —— 收进去的量就是池子自己的半径(同一个常数也用来画
+  // 两端各收一个池半径 —— 收进去的量就是池子自己的半径(同一个常数也用来画
   // 池子本体),不是另起一个看着顺眼的比例。span 太短时封顶在半程,防止几何
   // 长度变负,这是数学上的安全边界,不是手调的观感数字。
   const inset = Math.min(FORM.poolRadius, full / 2);
-  const span = full - inset;
-  // 槽从 (-full/2 + inset) 铺到 (+full/2),所以它的中心在 +inset/2。
-  const along = inset / 2;
+  const span = full - inset * 2;
+  // 两头收得一样多,所以槽的中心就是两端的中点,也就是 group 的原点。
 
   /** 造一件渠上的零件:先按 +z 铺好、烘进原点,再整体转到渠的方向。 */
   const piece = (w: number, h: number, len: number, y: number, z: number, colour: string): Mesh =>
@@ -163,14 +163,14 @@ function channel(from: Vec3, to: Vec3): { group: Group; water: Mesh; half: Mesh 
   // 空渠必须看得出是「一条潜在的路,只是现在是空的」:两道立起来的边墙夹着
   // 一条凹下去的槽底。没有这个轮廓,断口那头就只是一片虚空,玩家不会想到
   // 「这里本来能过」—— 这个形状替代了文字教程。
-  g.add(piece(FORM.channelWidth, FORM.channelWall * 0.7, span, -FORM.channelWall * 0.5, along, PALETTE.lapis.dark));
+  g.add(piece(FORM.channelWidth, FORM.channelWall * 0.7, span, -FORM.channelWall * 0.5, 0, PALETTE.lapis.dark));
 
   for (const side of [-1, 1]) {
     // 边墙沿渠的法线让开半个渠宽。这里是**几何自己的原点**,不是位置微调 ——
     // 转 y 轴之前 +x 就是法线方向。
     const wall = new Mesh(
       new BoxGeometry(FORM.channelWall, FORM.channelWall * 2.1, span)
-        .translate((side * FORM.channelWidth) / 2, FORM.channelWall * 0.25, along)
+        .translate((side * FORM.channelWidth) / 2, FORM.channelWall * 0.25, 0)
         .rotateY(angle),
       lambert(PALETTE.sandstone.mid),
     );
@@ -183,7 +183,7 @@ function channel(from: Vec3, to: Vec3): { group: Group; water: Mesh; half: Mesh 
     FORM.channelWall,
     span,
     FORM.channelWall * 0.5,
-    along,
+    0,
     PALETTE.lapis.mid,
   );
   water.visible = false;
@@ -197,7 +197,7 @@ function channel(from: Vec3, to: Vec3): { group: Group; water: Mesh; half: Mesh 
     halfLen,
     FORM.channelWall * 0.5,
     // 靠源那一端:从槽的起点往前铺半截。
-    -full / 2 + inset + halfLen / 2,
+    -span / 2 + halfLen / 2,
     PALETTE.lapis.mid,
   );
   half.visible = false;

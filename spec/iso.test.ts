@@ -16,9 +16,16 @@ import { holds } from "../src/rules.ts";
 
 const CASES: { level: Level; layout: Layout }[] = [{ level: level1, layout: level1Layout }];
 
-/** 枚举一关的全部配置。相机当前固定,所以只有砖块在变。 */
+/**
+ * 枚举一关的全部配置:四个相机角度 × 每块砖的四个档位。
+ *
+ * 以前这里只发 `level.opens.camera` 一个角度,理由写的是「相机当前固定」——
+ * 但这一关的解法**就是**转相机(`when: { camera: 225 }`),于是那条声明从来
+ * 没被正向检查过,而另外三个角度的「必须分开」也从来没被检查过。第一关的渠口
+ * 一路戳进大池半个水面,传感器全绿,是这个洞放它过去的。
+ */
 function configurations(level: Level): Config[] {
-  let out: Config[] = [{ camera: level.opens.camera, turns: {} }];
+  let out: Config[] = CAMERA.azimuthsDeg.map((camera) => ({ camera, turns: {} }));
   for (const part of level.parts) {
     const grown: Config[] = [];
     for (const base of out) {
@@ -170,6 +177,32 @@ describe("每条声明的 link,模型都真的摆成了那样", () => {
               Math.min(...screenY(flow.to)),
               `${level.name}: 声明水从 ${flow.from} 流到 ${flow.to},但 ${flow.to} 在画面上更高`,
             ).toBeLessThanOrEqual(Math.max(...screenY(flow.from)) + 1e-6);
+          }
+        }
+      });
+
+      it("正在通水的那一段渠,画面上是往下走的", () => {
+        // 规则 2 的另一半,而且是原来那条测试接不住的一半。
+        //
+        // 原来只比「声明的 from 和 to 两组锚点」的极值,而渠的上游锚点**就是**
+        // 泉眼本身,两边永远相等,于是恒真。渠自己是往上爬还是往下淌,从来没
+        // 被问过 —— 有一版第一关的渠在解开的那个角度是往右上方爬的,水倒流,
+        // 全绿。这里直接问渠自己:出水口必须比进水口低。
+        for (const config of configurations(level)) {
+          for (const c of level.channels) {
+            const feeds = level.waterLinks.some(
+              (f) => f.from === c.id && holds(f.when, config),
+            );
+            if (!feeds) continue;
+            // 摆放顺序就是水流顺序:from 是进水口,to 是出水口。
+            const [up, down] = anchorsOf(layout.ports[c.id], layout, config.turns);
+            const upY = project(up, config.camera)[1];
+            const downY = project(down, config.camera)[1];
+            expect(
+              downY,
+              `${level.name}: ${c.id} 在 ${config.camera}° 下通着水,` +
+                `但出水口比进水口高 ${(downY - upY).toFixed(2)} —— 水在倒流`,
+            ).toBeLessThan(upY);
           }
         }
       });
