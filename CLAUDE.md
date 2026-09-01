@@ -145,7 +145,10 @@ Two checks only a real browser can do, so they do not belong in `pnpm check`:
     whole point lives on a canvas, then *all* of its contrast is a hand-check,
     and the only durable version of that is to drive the palette from named
     constants in one module and measure those once. Colours picked inline at
-    each call site cannot be audited at all.
+    each call site cannot be audited at all. **This project adds one wrinkle:
+    tone mapping (see Rendering) shifts what reaches the screen away from the
+    hex constants, so measure contrast from screenshots of the rendered canvas,
+    not from the constants themselves.**
 
   Every one of these expires silently when the palette moves, so write the
   measured ratio next to the constant, not in a commit message.
@@ -192,182 +195,315 @@ and call it from the handler. `pouredLevel(startLevel, dy, travel)` in
 in `spec/tuning.test.ts`. Applies to anything with a sign in it --- scroll,
 drag, zoom, scrub.
 
-## The game: Hanging Gardens (this brief only — retires with it)
+## The game: Hanging Gardens (this brief only --- retires with it)
 
-The specification below is the author's, kept in their own words because it is
-the contract and a translation would blur it. What carries forward from this
-section is not the rules but the move underneath them: a constraint written
-down and wired to a check beats a constraint remembered.
+The specification below is the contract. It was authored in Chinese and
+translated to English at the author's direction on 2026-09-01; the Chinese
+original stays in git history and wins if a translation dispute ever matters.
+The same commit resolved four contradictions that had accumulated between
+drafting layers (2D-renderer spatial rules vs the Three.js implementation;
+pillar guidance vs the pillar ban; camera-rotation level text vs the
+part-rotation decision; and no rule against the azimuth-rounding class of DOM
+bug). What carries forward from this section is not the rules but the move
+underneath them: a constraint written down and wired to a check beats a
+constraint remembered.
 
-古巴比伦空中花园主题的视错觉解谜游戏。玩家旋转**相机**,利用等距投影下的
-视觉重合,重组水路与步行路径,让幼发拉底河的水层层向上,最终填满顶层的大蓄水池。
+An optical-illusion puzzle game themed on the Hanging Gardens of Babylon. The
+player rotates pieces of the tower and exploits visual coincidence under
+orthographic projection to reassemble water routes and walking paths, so the
+Euphrates climbs the tower level by level and finally fills the great cistern
+at the top.
 
-引水兽(穆什胡什)是唯一的角色。它不战斗、不跳跃,只走路和站立。
+The water-drawing beast (mušḫuššu, 穆什胡什) is the only character. It does not
+fight and does not jump; it walks and it stands.
 
-### 一、五条核心规则
+### 1. The five core rules
 
-这五条是整个游戏的全部规则,不可增加,不可设例外。
+These five rules are the entire game. No additions, no exceptions.
 
-1. **屏幕上看起来连着,就是连着。** 所有连通判定——水路和步行路径——都基于
-   当前相机角度下的视觉连接,与三维中的真实距离无关。没有例外。
-2. **水只向屏幕上看起来更低的方向流。**
-3. **引水兽站在取水点上,水才开始流。** 兽离开取水点,已经发生的结果不回退。
-4. **一段水渠的两端都锚在蓄水池上,该段才算灌满。灌满不可逆。**
-   只流到一半、末端没有接到池子的水渠,保持半满状态,不可行走。
-5. **灌满的水渠是可行走的路面,但它仍然遵守第 1 条。**
-   已灌满的水渠在某些相机角度下看起来是断开的,那个角度下就走不过去。
-   「满」是水的状态,「通」是视觉的状态,两者互不影响。
+1. **If it looks connected on screen, it is connected.** Every connectivity
+   judgement --- water routes and walking paths alike --- is based on visual
+   connection under the current configuration, regardless of true 3D distance.
+   No exceptions.
+2. **Water only flows toward what looks lower on screen.**
+3. **Water starts flowing when the beast stands on a tap point.** When the
+   beast steps off, results that have already happened do not roll back.
+4. **A channel counts as filled only when both of its ends are anchored to
+   pools; filling is irreversible.** A channel that water reached but whose far
+   end is not anchored to a pool stays half-full and cannot be walked on.
+5. **A filled channel is walkable surface, but it still obeys rule 1.** A
+   filled channel can look disconnected in some configurations, and in those
+   configurations it cannot be walked. "Full" is a state of the water;
+   "connected" is a state of the view. They do not affect each other.
 
-由规则推出的设计后果(实现时必须保持):
+Design consequences that follow from the rules (must be preserved in the
+implementation):
 
-- 水的对齐要求(渠的两端锚到池子)和步行的对齐要求(渠看起来接着兽脚下的地面)
-  是**同一段几何上的两个不同判定**。同一个相机角度可能满足其一而不满足另一。
-  谜题的深度来自这里,不要试图统一它们。
-- 「水流到一半停住」是一个**合法且重要的可见失败状态**,必须在画面上明确表现
-  (水停在渠中,末端悬空),不是 bug,不要加逻辑去阻止它发生。
+- The water alignment requirement (a channel's two ends anchored to pools) and
+  the walking alignment requirement (the channel looks joined to the ground
+  under the beast's feet) are **two different judgements on the same piece of
+  geometry**. One configuration can satisfy one and not the other. The puzzle's
+  depth comes from exactly this; do not try to unify them.
+- "Water flows halfway and stops" is a **legal and important visible failure
+  state**, and must be shown clearly (water resting in the channel, the far end
+  hanging in the air). It is not a bug. Do not add logic to prevent it.
 
-### 二、架构约束(不可协商)
+### 2. Architecture (non-negotiable)
 
-连通性来自手写的表,不来自几何计算:
+Connectivity comes from hand-written tables, not from geometric computation:
 
-- **当前版本:相机固定在一个角度,玩家转的是砖块。** 规格原本写的是转相机,
-  那条留在下面没删 —— 数据结构两者通吃,见 `when`。改回去只需给声明多填一项,
-  规则和传感器都不动。
-- 一次「配置」= 相机角度 + 每块砖转到第几档。**都是有限枚举**,不是连续值。
-- 每条连通声明带一个 `when`,写明它在哪个配置下成立;省略的项表示「不关心」。
-  这样避免了「每种组合手写一整份表」的组合爆炸,而每一条仍然是手写的。
-- 运行时只查表。
-- **禁止**射线检测(Raycaster)、屏幕空间投影、包围盒重叠检测,或任何用几何
-  运算推导「两个东西看起来是否对齐」的做法。
-- 视觉上的对齐由模型摆放位置保证,由表格声明,**不由代码推断**。
-- 关卡数据是手写字面量,放在 `src/levels/` 下,一关一个文件。不生成、不派生。
+- **Current version: the camera is fixed at one azimuth; the player rotates
+  parts.** The spec originally said rotate-the-camera; that reading is kept
+  below undeleted, because the data structure covers both --- see `when`.
+  Switching back means filling in one more field per declaration; no rules and
+  no sensors change.
+- One "configuration" = camera azimuth + the turn stop of every rotatable
+  part. **All finite enumerations**, never continuous values.
+- Every connectivity declaration carries a `when` stating the configurations
+  in which it holds; an omitted field means "don't care". This avoids the
+  combinatorial explosion of writing one full table per configuration, while
+  every line stays hand-written.
+- The runtime only looks things up in the table.
+- **Forbidden:** raycasting (`Raycaster`), screen-space projection checks,
+  bounding-box overlap tests, or any geometric computation that derives
+  "whether two things look aligned".
+- On-screen alignment is guaranteed by model placement, declared by the table,
+  and **never inferred by code**.
+- Level data is hand-written literals under `src/levels/`, one file per level.
+  Not generated, not derived.
 
-这条是本项目最重要的架构决定。如果发现自己在写「计算两个平台投影后是否重叠」
-之类的代码,说明方向错了,停下来。
+This is the most important architectural decision in the project. If you find
+yourself writing code like "compute whether two platforms' projections
+overlap", the direction is wrong --- stop.
 
 ```ts
-type PortId = string;   // 池子、渠端、平台边缘等一切可连接点的名字
-type PartId = string;   // 可转的砖块
+type PortId = string;   // a name for anything connectable: pools, channel ends, platform edges
+type PartId = string;   // a rotatable part
 type Turn = 0 | 1 | 2 | 3;
 
-/** 一条声明在什么配置下成立。省略 = 不关心。 */
+/** The configurations in which a declaration holds. Omitted = don't care. */
 type When = { camera?: Azimuth; turns?: Partial<Record<PartId, Turn>> };
 type Link = { between: [PortId, PortId]; when: When };
 
 interface Level {
   pools: { id: PortId; isSource?: boolean; isFinal?: boolean }[];
-  channels: { id: PortId; ends: [PortId, PortId] }[];   // ends 指向两个池子
+  channels: { id: PortId; ends: [PortId, PortId] }[];   // ends point at two pools
   platforms: { id: PortId }[];
-  tapPoints: { id: PortId; on: PortId }[];              // 取水点,及其所在平台
-  parts: PartId[];                                      // 可转的砖块
+  tapPoints: { id: PortId; on: PortId }[];              // tap point, and the platform it sits on
+  parts: PartId[];                                      // rotatable parts
 
-  waterLinks: Link[];   // 看起来水路相连
-  walkLinks: Link[];    // 看起来可以走过去
+  waterLinks: Link[];   // "the water route looks connected"
+  walkLinks: Link[];    // "it looks walkable"
 }
 ```
 
-`waterLinks` 与 `walkLinks` 必须分开声明,不要合并。它们是两套独立的判定。
-`walkLinks` 中可以引用 `channels` 的 id;该条连接只在对应水渠已灌满时生效。
-运行时状态只有两项:当前相机角度、已灌满的水渠集合(只增不减)。
+`waterLinks` and `walkLinks` must stay separate declarations; do not merge
+them. They are two independent judgements. `walkLinks` entries may reference a
+`channels` id; such a link is only live once that channel is filled. Runtime
+state is exactly two things: the current configuration, and the set of filled
+channels (grow-only).
 
-### 三、渲染约束
+### 3. Rendering constraints (Three.js --- Plan A)
 
-相机:
+An earlier draft of this file carried a 2D isometric renderer's rules
+(`worldToScreen` at 64px per tile, painter's-algorithm draw order). Those
+conflicted with the Three.js implementation and were retired on 2026-09-01 in
+favour of Plan A: the same intent, restated as **modelling discipline**. Depth
+belongs to the GPU.
 
-- Three.js,相机必须是 `OrthographicCamera`。**禁止 `PerspectiveCamera`。**
-  透视会让远处的边永远无法精确对齐,视错觉的前提就是屏幕上两条边像素级重合。
-- **禁止 `OrbitControls` 或任何自由轨道相机。**
-- **当前版本相机固定;转的是砖块。** 下面这两条对砖块一字不差地适用,
-  将来相机转起来时也照用:
-- 一次转动 = 播放一段固定的过渡动画,落到下一个枚举档位。
-  **过渡动画期间不接受输入,不进行任何连通判定。**
-  中间状态必然穿帮,穿帮必须藏在动画里。
-- 相机俯角由 `style.ts` 常量控制,取 35.264°(atan(1/√2))。规格写 30–35,
-  而这是区间里**唯一**让整数格点精确重合的值:补偿比 √2/tan(俯角) 在这里等于
-  2,33° 给 2.178,30° 给 2.449 —— 都会让两条边永远差一点点,正是规格排除
-  透视相机时要避免的那种差一点。
+#### 3.1 Spatial law
 
-几何:
+- The world is a discrete grid. Every object's logical position in level data
+  is integer `(x, y, z)`. `TILE = 1` Three.js world unit; there is no second
+  conversion ratio anywhere.
+- Logical coordinates become world coordinates through exactly one function:
 
-- 所有几何体由 Three.js 内置 primitive 构成。
-  **禁止导入外部 3D 模型(.glb/.gltf/.obj 等)、禁止贴图文件。** 一切画面由代码生成。
-- 每块露台由至少三个 primitive 构成:主体、顶面薄板(亮一档)、
-  底部檐口(比主体略宽,暗一档)。不要用单个 box 表示一块露台。
-- 台阶要有可见厚度,不要用斜面代替。柱子分段,不要单根等宽圆柱。
+  ```ts
+  function gridToWorld(x: number, y: number, z: number): THREE.Vector3 {
+    return new THREE.Vector3(x * TILE, z * TILE, y * TILE);
+  }
+  ```
 
-材质与光照:
+- **No decimal offsets, no hand-tuned nudges, no magic numbers in positions**
+  (the 0.42 channel inset was this bug). Alignment problems are fixed by
+  changing a geometry's origin or dimensions, never by nudging its position.
+- Geometry dimensions are `TILE` multiples or the ratios named in §3.5 ---
+  nothing else.
 
-- 材质用 `MeshLambertMaterial`。**禁止** `MeshStandardMaterial`、
-  `MeshPhysicalMaterial`、PBR、法线贴图、环境光遮蔽、`shadowMap`。
-- **不要用 `MeshBasicMaterial`。** 它不受光,立方体三个面颜色完全一样,
-  体积感会彻底消失。
-- 光照只有两盏:一盏 `DirectionalLight`(方向固定,**不跟随相机**)+
-  一盏 `AmbientLight`(intensity 约 0.6,保证暗面不发黑)。
-- 体积感来自面朝向的明度差异,不来自投影。
-- `WebGLRenderer` 必须开 `antialias: true`。开启 `ACESFilmicToneMapping`,
-  `toneMappingExposure` 约 1.1。背景用暖砂色,不要纯黑或纯白。
-- 允许一层轻微 Bloom。**禁止 SSAO** — 接触阴影会与平涂风格冲突。
+#### 3.2 Camera
 
-色板(不要自行选色,每个色相三档依次用于亮面、中间面、暗面):
+- One `OrthographicCamera`, parameters as constants, fixed in the current
+  version. **`PerspectiveCamera` is forbidden** --- perspective means distant
+  edges can never align pixel-exactly, and pixel-exact coincidence of edges is
+  the premise of the illusion. **`OrbitControls` and any free orbit camera are
+  forbidden.**
+- Pitch is a `style.ts` constant: 35.264° (`atan(1/√2)`). The spec allows
+  30--35°, and this is the **only** value in that band where integer grid
+  points coincide exactly: the compensation ratio `√2 / tan(pitch)` equals 2
+  there, versus 2.178 at 33° and 2.449 at 30° --- each of which leaves two
+  edges permanently a hair apart, exactly the near-miss the perspective ban
+  exists to avoid.
+- Azimuth stays an enum, 45/135/225/315 --- kept for the future
+  camera-rotation version.
+- A turn = playing one fixed transition animation that lands on the next enum
+  stop. **During the transition, no input is accepted and no connectivity
+  judgement runs.** Intermediate states necessarily break the illusion; the
+  break must be hidden inside the animation. This applies to parts verbatim
+  now, and to the camera verbatim if it ever rotates.
+
+#### 3.3 DOM overlay positioning
+
+Positioning DOM elements (buttons etc.) over the canvas is done **only** by
+projecting a world position through the camera:
+
+```ts
+function worldToScreenPx(world: THREE.Vector3): { left: number; top: number } {
+  const v = world.clone().project(camera); // NDC
+  return {
+    left: (v.x * 0.5 + 0.5) * renderer.domElement.clientWidth,
+    top: (-v.y * 0.5 + 0.5) * renderer.domElement.clientHeight,
+  };
+}
+```
+
+**All angle arithmetic in overlay positioning is forbidden.** The bug this
+retires: azimuths of 45/135/225/315 were being rounded against multiples of
+90°, so the derived angle was wrong at every stop and the buttons landed
+off-position permanently. Projection has no angles in it, so the whole class
+is gone.
+
+#### 3.4 Depth
+
+- Ordering is settled by the depth buffer. **Forbidden:** manual
+  `renderOrder`, `depthTest: false`, and any draw-order hack.
+- Every material is opaque (`transparent: false`, `opacity: 1`), **water
+  included** --- water is solid lapis colour. This sidesteps transparency
+  sorting entirely.
+
+#### 3.5 Geometry vocabulary (only these elements exist)
+
+- **Terrace**: at least three primitives --- main body, a thin top plate one
+  tone lighter, and a base cornice slightly wider than the body and one tone
+  darker. Never a single box. Sides are solid extrusions of the body.
+  **Colonnades, free-standing pillars, and per-tile support structures are
+  forbidden** (removed in the Plan A cleanup; the eight-pillar porticos under
+  each terrace were this bug).
+- **Steps**: visible thickness; never a ramp standing in for stairs.
+- **Pool**: 1 tile; an inset cylinder, diameter 0.8 `TILE`.
+- **Channel**: a groove 1 tile wide, axis-aligned only.
+- **Beast**: 1 tile footprint, about 1 `TILE` tall.
+- Everything is built from Three.js built-in primitives. **External 3D models
+  (.glb/.gltf/.obj etc.) and texture files are forbidden** --- the whole image
+  is generated by code.
+- **No geometry that is not in the level data.** Visual complexity is capped
+  by the level data; the renderer never improvises decoration.
+- **No gridlines and no brick seams on top faces** (those were debug
+  rendering; production surfaces are solid stone).
+
+#### 3.6 Materials and lighting
+
+- Materials are `MeshLambertMaterial`. **Forbidden:** `MeshStandardMaterial`,
+  `MeshPhysicalMaterial`, PBR, normal maps, ambient occlusion, `shadowMap`.
+- **Do not use `MeshBasicMaterial`.** It is unlit, so a cube's three visible
+  faces come out identical and all sense of volume dies.
+- Exactly two lights: one `DirectionalLight` (fixed direction, **not**
+  following the camera) + one `AmbientLight` (intensity ≈ 0.6, so dark faces
+  never go black).
+- Volume comes from per-face brightness differences by orientation, not from
+  cast shadows.
+- `WebGLRenderer` with `antialias: true`. Enable `ACESFilmicToneMapping`,
+  `toneMappingExposure` ≈ 1.1. Background is warm sand, never pure black or
+  pure white.
+- A light Bloom pass is allowed. **SSAO is forbidden** --- contact shadows
+  fight the flat-colour style.
+
+#### 3.7 Palette
+
+Do not pick colours. Each hue has three steps, used in order for the light
+face, mid face, and dark face (the terrace's plate/body/cornice tiers draw
+from the same steps):
 
 ```
-砂岩    #E8D5B7  #D4B896  #A8906F
-赭金    #E0A94F  #C08432  #8A5A1E
-青金石  #4A6FA5  #2E4A73  #1B2E4A
-椰枣绿  #7A9455  #5C7340  #3E4F2B
-背景    #F2E4CE
+sandstone   #E8D5B7  #D4B896  #A8906F
+ochre gold  #E0A94F  #C08432  #8A5A1E
+lapis       #4A6FA5  #2E4A73  #1B2E4A
+date green  #7A9455  #5C7340  #3E4F2B
+background  #F2E4CE
 ```
 
-视觉语言:阶梯状塔庙露台、砖砌水渠、棕榈与藤蔓。参考伊什塔尔门的釉砖拼贴——
-平面色块,无纹理,无写实材质。避免:纪念碑谷换皮、古埃及式金色奢华、
-波斯地毯式繁复。
+Visual language: stepped ziggurat terraces, brick water channels, date palms
+and vines. Reference the glazed-brick tilework of the Ishtar Gate --- flat
+colour fields, no texture, no realistic materials. Avoid: a Monument Valley
+reskin, ancient-Egyptian gold opulence, Persian-carpet density of ornament.
 
-### 四、可调参数必须集中
+### 4. Tunable parameters live in one place
 
-全部提取为 `src/config/style.ts` 中的具名常量,不得散落在各处硬编码:相机俯角、
-方位角枚举值、正交视锥大小、过渡动画时长与缓动、`DirectionalLight` 的方向向量
-与强度、`AmbientLight` 强度、`toneMappingExposure`、全部色板值、露台厚度、
-檐口外扩量、台阶高度等几何比例常量。
+All of the following are named constants in `src/config/style.ts`, never
+scattered hardcodes: camera pitch, the azimuth enum values, orthographic
+frustum size, transition duration and easing, the `DirectionalLight` direction
+vector and intensity, `AmbientLight` intensity, `toneMappingExposure`, the
+entire palette, terrace thickness, cornice overhang, step height, and every
+other geometric ratio.
 
-这些值需要人眼反复调整,必须能在不改动逻辑代码的前提下修改。
+These values get re-tuned by eye repeatedly; they must be changeable without
+touching logic code.
 
-### 五、关卡设计
+### 5. Level design
 
-四关,难度低,玩具感优先。教学全部由关卡结构承担,**不做文字教程**。
+Four levels, low difficulty, toy-feel first. All teaching is carried by level
+structure; **no text tutorials**. The levels were designed in the
+camera-rotation reading; in the current version every "turn" below is a turn
+of the level's rotatable part, and the `when` tables express the same puzzles
+either way.
 
-- **第一关 · 只有水** — 起点池 →(断开的渠)→ 终点池。转相机接上,水流过去填满。
-  兽不参与。教规则 1、2。这一关应当短到几乎不算谜题。
-- **第二关 · 只有人** — 渠是完整的,但兽够不到取水点。转相机让阶梯与平台在屏幕上
-  接上,兽走上去站住,水自动流完。教规则 3。
-- **第三关 · 水开出一条路** — 兽与终点之间有一个任何角度都接不上的断口。兽必须先去
-  取水点放水,让横穿该断口的水渠灌满成桥,再踩着水面过去。必须包含一次「水流到
-  一半停住」的诱导:玩家第一次尝试的角度会让水漏向一个没有池子的方向,水悬停在
-  渠中。教规则 4、5。
-- **第四关 · 桥造好了还得再转一次** — 两段渠、两个取水点。灌满第一段 → 踩着它走到
-  第二个取水点 → 灌满第二段 → 此时第二段在当前角度下看起来是断的 → 再转一次相机
-  才能走过去 → 填满终点大池。
+- **Level 1 · Water only** --- source pool → (a broken channel) → final pool.
+  One turn joins it up; water flows across and fills. The beast is not
+  involved. Teaches rules 1 and 2. This level should be so short it barely
+  counts as a puzzle.
+- **Level 2 · Beast only** --- the channel is intact, but the beast cannot
+  reach the tap point. One turn joins the stairs and the platform on screen;
+  the beast walks up, stands, and the water finishes on its own. Teaches
+  rule 3.
+- **Level 3 · Water opens the road** --- between the beast and the goal is a
+  gap that no configuration bridges directly. The beast must first reach a tap
+  point and release water so that the channel spanning the gap fills into a
+  bridge, then walk across the water. This level must include one engineered
+  failure: the configuration a player tries first lets the water leak toward
+  an end with no pool, and the water halts mid-channel. Teaches rules 4 and 5.
+- **Level 4 · The bridge still needs one more turn** --- two channels, two tap
+  points. Fill the first → walk it to the second tap point → fill the second →
+  in the current configuration the second, though full, looks broken → one
+  more turn and it connects → walk across and fill the final great cistern.
 
-通关条件是**终点大池被填满**,不是「水抵达终点」。大池水位渐进上涨,涨满瞬间整座
-露台植物生长。
+The win condition is **the final cistern being filled**, not "water reached
+the end". The great pool's level rises progressively; the instant it tops out,
+the whole tower blooms.
 
-### 六、通关反馈
+### 6. Completion feedback
 
-水流经的层级长出椰枣树与藤蔓。关卡开始时露台是光秃的石头,视野完全通透。解完时
-枝叶填满画面,前景叶片垂到镜头前。这就是全部的通关反馈。**不做 HUD、不做过关弹窗、
-不做进度条。** 遮挡只发生在谜题已解之后,不得在解题过程中遮挡关键接缝。
+Every tier the water has passed through grows date palms and vines. At level
+start the terraces are bare stone and the view is fully open; at solve,
+foliage fills the frame and foreground leaves hang down in front of the
+camera. That is the entire completion feedback. **No HUD, no victory modal, no
+progress bar.** Occlusion happens only after the puzzle is solved; nothing may
+cover a load-bearing seam while the player is still solving.
 
-### 七、本版本不做
+### 7. Not in this version
 
-音频(全部)、移动端触控控件(只做桌面:鼠标点击 + 方向键 + Space,移动端能打开
-即可)、拖拽操作、战斗、计时、分数、生命值、文字教程、菜单、标题画面、关卡选择、
-存档、第二只引水兽。
+Audio (all of it), mobile touch controls (desktop only: mouse click + arrow
+keys + Space; mobile merely has to open), drag interactions, combat, timers,
+score, health, text tutorials, menus, a title screen, level select, saves, a
+second beast.
 
-### 八、工作方式
+### 8. Working practice
 
-- 每次开工前先读 `PLAN.md`(规格里写作 `plan.md`;此仓库大小写不敏感,是同一个
-  文件),只做该文件描述的当轮范围。
-- **涉及新增关卡数据时,先输出数据字面量供确认,再写渲染与逻辑代码。**
-- 其余(check、提交节奏、红状态)见上面的通用条目,不重复。
+- Read `PLAN.md` before starting any session (the spec spells it `plan.md`;
+  this repo's filesystem is case-insensitive, so it is the same file), and do
+  only that file's scope for the round.
+- **When new level data is involved, output the data literal for confirmation
+  first, then write rendering and logic code.**
+- Everything else (checks, commit rhythm, red states) is covered by the
+  general sections above and not repeated here.
 
 ## Facts about this stack that have each cost a run
 

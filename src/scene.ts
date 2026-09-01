@@ -586,7 +586,12 @@ export function createStage(canvas: HTMLCanvasElement, level: Level, layout: Lay
         : raw;
       let sx = 0;
       let sy = 0;
-      const az = (((Math.round(azShown / 90) * 90) % 360) + 360) % 360 as Azimuth;
+      // 吸附到最近的**枚举角度**,不是最近的 90 的倍数 —— 方位角是
+      // 45/135/225/315,一个都不是 90 的倍数,Math.round(135/90)*90 会给出
+      // 180,于是按钮一直落在错的地方。
+      const az = CAMERA.azimuthsDeg.reduce((best, a) =>
+        Math.abs(a - azShown) < Math.abs(best - azShown) ? a : best,
+      );
       for (const p0 of pts) {
         const p: Vec3 = [
           p0[0] + world.position.x,

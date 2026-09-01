@@ -213,6 +213,20 @@ export function mount(el: Elements): () => void {
 
   load(0);
 
+  // 开发期的探针。留着是因为这一周有半小时耗在「画面和状态对不上」上,
+  // 而真凶是浏览器缓存 —— 当时手里没有任何办法把「游戏认为的」和「画出来的」
+  // 摆在一起看。生产构建里 import.meta.env.DEV 是 false,整段会被摇掉。
+  if (import.meta.env.DEV) {
+    (window as unknown as Record<string, unknown>).__probe = () => ({
+      camera: state.config.camera,
+      filled: [...state.filled],
+      beastAt: state.beastAt,
+      screen: Object.fromEntries(
+        Object.keys(layout.ports).map((id) => [id, stage?.toScreen(id)]),
+      ),
+    });
+  }
+
   return () => {
     if (timer !== undefined) clearTimeout(timer);
     cancelAnimationFrame(frame);
