@@ -3,10 +3,10 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Qanat</title>
+    <title>Hanging Gardens</title>
     <meta
       name="description"
-      content="A browser game about routing a finite amount of water through a grid of turning channels before the tank runs dry."
+      content="A puzzle about impossible geometry in Babylon: turn the terraces until the water runs downhill into the sky."
     />
 
     <meta property="og:type" content="website" />
@@ -17,23 +17,17 @@
   </head>
   <body>
     <header>
-      <h1>Qanat</h1>
+      <h1>Hanging Gardens</h1>
       <!-- One destination, so the landmark carries no visible list: a second
            copy of the title in the corner is noise, not navigation. -->
       <nav aria-label="Primary" class="sr-only">
-        <a href="./">Qanat</a>
+        <a href="./">Hanging Gardens</a>
       </nav>
     </header>
     <main>
-      <div class="field">
-        <div class="gauge tank" id="tank"><i></i></div>
-
-        <div class="stage" id="stage">
-          <canvas id="board"></canvas>
-          <div class="cells" id="cells"></div>
-        </div>
-
-        <div class="gauge grove" id="grove"><i></i></div>
+      <div class="stage" id="stage">
+        <canvas id="board"></canvas>
+        <div class="handles" id="handles"></div>
       </div>
 
       <ol class="progress" id="progress"></ol>

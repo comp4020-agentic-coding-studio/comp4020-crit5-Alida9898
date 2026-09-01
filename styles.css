@@ -18,6 +18,9 @@ body {
   flex-direction: column;
   min-height: 100vh;
   margin: 0;
+
+  /* Sandstone page, lapis text — 6.43:1, the only pair that carries writing.
+     The desert itself is inside the stage, below. */
   background: var(--sandstone);
   color: var(--lapis);
   font-family: system-ui, sans-serif;
@@ -64,54 +67,21 @@ h1 {
      Chrome and jsdom never would. Weight and size carry the hierarchy. */
 }
 
-.field {
-  display: flex;
-  align-items: center;
-  gap: clamp(0.5rem, 2vw, 1.5rem);
-}
-
-/* Two columns of liquid: what is left, and what has arrived. The whole
-   tutorial is that one drops while the other does not. */
-.gauge {
-  position: relative;
-
-  /* As tall as the sand, not as tall as the viewport. */
-  height: var(--gauge-h, 60%);
-  width: clamp(1.1rem, 2.4vw, 1.9rem);
-  overflow: hidden;
-  border: 2px solid var(--lapis);
-  border-radius: 999px;
-}
-
-.gauge i {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  height: var(--fill, 0%);
-  transition: height 260ms ease-out;
-}
-
-.tank i {
-  background: var(--lapis);
-}
-
-.grove {
-  border-color: var(--grove);
-}
-
-.grove i {
-  background: var(--grove);
-}
-
-/* The stage sets the height and the gauges stretch to it, rather than the row
-   setting a height the aspect-ratio then disagrees with. */
+/* Square, and bounded by the SHORT axis of the viewport — a stage sized off
+   the width alone runs off the bottom of a 1080-tall screen, which buries the
+   interaction below the fold on one of the two marking viewports. */
 .stage {
   position: relative;
-  flex: none;
-  height: min(62vh, 66vw);
-  border-radius: 4px;
-  transition: box-shadow 220ms ease-out;
+  width: min(84vw, 78vh);
+  max-width: 940px;
+  aspect-ratio: 1;
+
+  /* Ochre sand behind the building, on a sandstone page. Water is lapis and
+     the terraces are sandstone, so nothing shares a colour with what it sits
+     on — which it did when the whole page was cobalt and the water vanished
+     into it, reading as a hole punched through each terrace. */
+  background: var(--ochre);
+  transition: filter 400ms ease-out;
 }
 
 .stage canvas {
@@ -120,70 +90,56 @@ h1 {
   height: 100%;
 }
 
-.stage.won {
-  box-shadow: 0 0 0 5px var(--grove);
-}
-
-.stage.lost {
-  box-shadow: 0 0 0 5px var(--ochre);
-}
-
-/* The pick overlay: real buttons over the canvas, sized to the grid the
-   camera is showing. No raycast, and the game stays keyboard-reachable. */
-.cells {
+/* One button per turnable terrace, placed with the same isometric map the
+   camera uses. No raycast, and the puzzle stays keyboard-reachable. */
+.handles {
   position: absolute;
   inset: 0;
-  display: grid;
-  margin: auto;
 }
 
-.cell {
-  position: relative;
+.handle {
+  position: absolute;
+  width: clamp(2.6rem, 5vw, 3.6rem);
+  height: clamp(2.6rem, 5vw, 3.6rem);
   padding: 0;
   border: 0;
+  border-radius: 50%;
   background: none;
-}
-
-.cell.live {
   cursor: pointer;
+  transform: translate(-50%, -50%);
 }
 
-.cell:disabled {
-  cursor: default;
-}
-
-/* The invitation. A turnable module breathes until the player moves; once
-   water is running it stops, because by then the board is doing the teaching. */
-.cell.live::after {
+/* The invitation: a turnable terrace breathes until it is turned. */
+.handle::after {
   position: absolute;
   border: 2px solid var(--lapis);
   border-radius: 50%;
-  animation: invite 1.7s ease-in-out infinite;
+  animation: invite 1.9s ease-in-out infinite;
   content: "";
-  inset: 12%;
-  opacity: 0.5;
+  inset: 16%;
+  opacity: 0.45;
 }
 
-.running .cell.live::after {
+.handle:focus-visible {
+  outline: 3px solid var(--lapis);
+  outline-offset: 2px;
+}
+
+.flowered .handle::after {
   animation: none;
   opacity: 0;
-}
-
-.cell:focus-visible {
-  outline: 3px solid var(--lapis);
-  outline-offset: -3px;
 }
 
 @keyframes invite {
   0%,
   100% {
-    opacity: 0.35;
-    transform: scale(0.94);
+    opacity: 0.3;
+    transform: scale(0.9);
   }
 
   50% {
-    opacity: 0.85;
-    transform: scale(1.06);
+    opacity: 0.8;
+    transform: scale(1.08);
   }
 }
 
@@ -213,12 +169,11 @@ h1 {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .cell.live::after {
+  .handle::after {
     animation: none;
-    opacity: 0.6;
+    opacity: 0.55;
   }
 
-  .gauge i,
   .stage {
     transition: none;
   }
