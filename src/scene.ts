@@ -174,40 +174,29 @@ function channel(from: Vec3, to: Vec3): { group: Group; water: Mesh; half: Mesh 
   return { group: g, water, half };
 }
 
-export type Stage = {
-  render: () => void;
-  step: (dt: number) => void;
-  /** 把砖块摆到某个配置。转动是动画,期间外部应当封锁输入。 */
-  setTurns: (turns: Record<PartId, Turn>) => void;
-  /** 把相机转到某个枚举角度。同样是动画,期间不得做任何连通判定。 */
-  setCamera: (azimuth: Azimuth) => void;
-  /** 相机是不是正在转。转的过程中每一帧都在穿帮,不能拿来判定或拾取。 */
-  turning: () => boolean;
-  /** 哪些渠灌满了、哪些半满、哪些池子有水。 */
-  setWater: (filled: Set<PortId>, half: PortId[], wet: Set<PortId>) => void;
-  setBeast: (port: PortId) => void;
-  /** 某个 port 在画面上的位置(0–1),给 DOM 按钮定位用。用的是同一个投影。 */
-  toScreen: (port: PortId) => { x: number; y: number };
-  resize: (w: number, h: number) => void;
-  dispose: () => void;
+/** 一块正在转、或者将要转的砖。 */
+export type Turning = { group: Group; part: PartId; shown: number; target: number };
+
+/** 建好的世界。`createStage` 拿它去渲染,传感器拿它去量。 */
+export type BuiltWorld = {
+  /** 场景图的根。已经把建筑的几何中心挪到了原点。 */
+  world: Group;
+  turning: Turning[];
+  pieces: Map<PortId, Group>;
+  waters: Map<PortId, { full: Mesh; half: Mesh }>;
+  poolWater: Map<PortId, Mesh>;
+  beast: Group;
 };
 
-export function createStage(canvas: HTMLCanvasElement, level: Level, layout: Layout): Stage {
-  const renderer = new WebGLRenderer({ canvas, antialias: RENDER.antialias, alpha: true });
-  renderer.toneMapping = ACESFilmicToneMapping;
-  renderer.toneMappingExposure = RENDER.toneMappingExposure;
-
-  const scene = new Scene();
-
-  // 两盏灯,只有两盏。方向光钉在世界里 —— 如果它跟着相机,每个面在转动中
-  // 亮度不变,建筑正好在玩家盯着看的时候变平。
-  const sun = new DirectionalLight("#ffffff", LIGHT.sunIntensity);
-  sun.position.set(...LIGHT.sunDirection);
-  scene.add(sun);
-  scene.add(new AmbientLight("#ffffff", LIGHT.ambientIntensity));
-
+/**
+ * 把一关的数据摆成场景图。**不碰 renderer,不碰相机。**
+ *
+ * 分出来是因为 `spec/scene-invariants.test.ts` 要在 jsdom 里量这些几何,
+ * 而 jsdom 里 `new WebGLRenderer()` 起不来。传感器量的必须是真正画出去的那份
+ * 场景图,不是另写一份「应该是这样」—— 后者只会两边一起漂。
+ */
+export function buildWorld(level: Level, layout: Layout): BuiltWorld {
   const world = new Group();
-  scene.add(world);
 
   // 把建筑的几何中心挪到原点。相机是绕原点转的,建筑要是偏在一边,转四分之一
   // 圈就甩出画外 —— 而这不是取景没框够,是转轴不对。
@@ -228,67 +217,6 @@ export function createStage(canvas: HTMLCanvasElement, level: Level, layout: Lay
     if (n > 0) world.position.set(-sx / n, -sy / n, -sz / n);
   }
 
-  // 取景:把所有 port 在所有配置下的投影都框进来,免得转到某一档就跑出画外。
-  let minX = Infinity;
-  let maxX = -Infinity;
-  let minY = Infinity;
-  let maxY = -Infinity;
-  // 相机会转,所以取景要把**每一个角度**下的投影都框进去 —— 只按开局角度框,
-  // 转过去就有东西跑出画外。
-  const note = (raw0: Vec3): void => {
-    const p: Vec3 = [
-      raw0[0] + world.position.x,
-      raw0[1] + world.position.y,
-      raw0[2] + world.position.z,
-    ];
-    for (const az of CAMERA.azimuthsDeg) {
-      const [x, y] = project(p, az);
-      minX = Math.min(minX, x);
-      maxX = Math.max(maxX, x);
-      minY = Math.min(minY, y);
-      maxY = Math.max(maxY, y);
-    }
-  };
-  for (const place of Object.values(layout.ports)) {
-    const raw: Vec3[] = "at" in place ? [place.at] : [place.from, place.to];
-    for (const p of raw) {
-      note(p);
-      const pivot = place.part ? layout.pivots[place.part] : undefined;
-      if (pivot) for (const t of [1, 2, 3] as Turn[]) note(turnedAround(p, pivot, t));
-    }
-  }
-  const pad = 0.85;
-  const midX = (minX + maxX) / 2;
-  const midY = (minY + maxY) / 2;
-  const half = Math.max(maxX - minX, maxY - minY) / 2 + pad;
-
-  const camera = new OrthographicCamera(
-    midX - half,
-    midX + half,
-    midY + half,
-    midY - half,
-    0.1,
-    400,
-  );
-  let azWant = level.opens.camera as number;
-  let azShown = azWant;
-
-  function placeCamera(): void {
-    const az = (azShown * Math.PI) / 180;
-    const pitch = (CAMERA.pitchDeg * Math.PI) / 180;
-    camera.position.set(
-      D * Math.cos(pitch) * Math.cos(az),
-      D * Math.sin(pitch),
-      D * Math.cos(pitch) * Math.sin(az),
-    );
-    camera.lookAt(0, 0, 0);
-  }
-  placeCamera();
-  camera.updateProjectionMatrix();
-
-  // ——— 建 ———
-
-  type Turning = { group: Group; part: PartId; shown: number; target: number };
   const turning: Turning[] = [];
   const pieces = new Map<PortId, Group>();
   const waters = new Map<PortId, { full: Mesh; half: Mesh }>();
@@ -418,6 +346,102 @@ export function createStage(canvas: HTMLCanvasElement, level: Level, layout: Lay
     }
   }
   world.add(beast);
+
+  return { world, turning, pieces, waters, poolWater, beast };
+}
+
+export type Stage = {
+  render: () => void;
+  step: (dt: number) => void;
+  /** 把砖块摆到某个配置。转动是动画,期间外部应当封锁输入。 */
+  setTurns: (turns: Record<PartId, Turn>) => void;
+  /** 把相机转到某个枚举角度。同样是动画,期间不得做任何连通判定。 */
+  setCamera: (azimuth: Azimuth) => void;
+  /** 相机是不是正在转。转的过程中每一帧都在穿帮,不能拿来判定或拾取。 */
+  turning: () => boolean;
+  /** 哪些渠灌满了、哪些半满、哪些池子有水。 */
+  setWater: (filled: Set<PortId>, half: PortId[], wet: Set<PortId>) => void;
+  setBeast: (port: PortId) => void;
+  /** 某个 port 在画面上的位置(0–1),给 DOM 按钮定位用。用的是同一个投影。 */
+  toScreen: (port: PortId) => { x: number; y: number };
+  resize: (w: number, h: number) => void;
+  dispose: () => void;
+};
+
+export function createStage(canvas: HTMLCanvasElement, level: Level, layout: Layout): Stage {
+  const renderer = new WebGLRenderer({ canvas, antialias: RENDER.antialias, alpha: true });
+  renderer.toneMapping = ACESFilmicToneMapping;
+  renderer.toneMappingExposure = RENDER.toneMappingExposure;
+
+  const scene = new Scene();
+
+  // 两盏灯,只有两盏。方向光钉在世界里 —— 如果它跟着相机,每个面在转动中
+  // 亮度不变,建筑正好在玩家盯着看的时候变平。
+  const sun = new DirectionalLight("#ffffff", LIGHT.sunIntensity);
+  sun.position.set(...LIGHT.sunDirection);
+  scene.add(sun);
+  scene.add(new AmbientLight("#ffffff", LIGHT.ambientIntensity));
+
+  const { world, turning, waters, poolWater, beast } = buildWorld(level, layout);
+  scene.add(world);
+
+  // 取景:把所有 port 在所有配置下的投影都框进来,免得转到某一档就跑出画外。
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  // 相机会转,所以取景要把**每一个角度**下的投影都框进去 —— 只按开局角度框,
+  // 转过去就有东西跑出画外。
+  const note = (raw0: Vec3): void => {
+    const p: Vec3 = [
+      raw0[0] + world.position.x,
+      raw0[1] + world.position.y,
+      raw0[2] + world.position.z,
+    ];
+    for (const az of CAMERA.azimuthsDeg) {
+      const [x, y] = project(p, az);
+      minX = Math.min(minX, x);
+      maxX = Math.max(maxX, x);
+      minY = Math.min(minY, y);
+      maxY = Math.max(maxY, y);
+    }
+  };
+  for (const place of Object.values(layout.ports)) {
+    const raw: Vec3[] = "at" in place ? [place.at] : [place.from, place.to];
+    for (const p of raw) {
+      note(p);
+      const pivot = place.part ? layout.pivots[place.part] : undefined;
+      if (pivot) for (const t of [1, 2, 3] as Turn[]) note(turnedAround(p, pivot, t));
+    }
+  }
+  const pad = 0.85;
+  const midX = (minX + maxX) / 2;
+  const midY = (minY + maxY) / 2;
+  const half = Math.max(maxX - minX, maxY - minY) / 2 + pad;
+
+  const camera = new OrthographicCamera(
+    midX - half,
+    midX + half,
+    midY + half,
+    midY - half,
+    0.1,
+    400,
+  );
+  let azWant = level.opens.camera as number;
+  let azShown = azWant;
+
+  function placeCamera(): void {
+    const az = (azShown * Math.PI) / 180;
+    const pitch = (CAMERA.pitchDeg * Math.PI) / 180;
+    camera.position.set(
+      D * Math.cos(pitch) * Math.cos(az),
+      D * Math.sin(pitch),
+      D * Math.cos(pitch) * Math.sin(az),
+    );
+    camera.lookAt(0, 0, 0);
+  }
+  placeCamera();
+  camera.updateProjectionMatrix();
 
   // ——— 状态 ———
 
