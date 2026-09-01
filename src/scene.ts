@@ -443,7 +443,7 @@ export function createStage(canvas: HTMLCanvasElement, level: Level, layout: Lay
       if (pivot) for (const t of [1, 2, 3] as Turn[]) note(turnedAround(p, pivot, t));
     }
   }
-  const pad = 0.85;
+  const pad = CAMERA.framePad;
   const midX = (minX + maxX) / 2;
   const midY = (minY + maxY) / 2;
   const half = Math.max(maxX - minX, maxY - minY) / 2 + pad;
@@ -607,6 +607,17 @@ export function createStage(canvas: HTMLCanvasElement, level: Level, layout: Lay
     resize: (w, h) => {
       renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
       renderer.setSize(w, h, false);
+      // 视锥按宽高比撑**长边**,短边永远是那个刚好框住整座塔的 half。
+      // 反过来(两边都用 half)在非正方画布上就是拉伸 —— 而拉伸会让等距角
+      // 不再是等距角,整个「整数格点精确重合」的前提当场作废。
+      const aspect = w / h || 1;
+      const halfW = half * Math.max(1, aspect);
+      const halfH = half * Math.max(1, 1 / aspect);
+      camera.left = midX - halfW;
+      camera.right = midX + halfW;
+      camera.top = midY + halfH;
+      camera.bottom = midY - halfH;
+      camera.updateProjectionMatrix();
     },
     dispose: () => renderer.dispose(),
   };

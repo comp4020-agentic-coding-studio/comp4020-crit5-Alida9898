@@ -25,8 +25,10 @@
 body {
   display: flex;
   flex-direction: column;
+  height: 100dvh;
   min-height: 100vh;
   margin: 0;
+  overflow: hidden;
   background: var(--background);
   color: var(--lapis-dark);
   font-family: system-ui, sans-serif;
@@ -73,20 +75,21 @@ h1 {
      Chrome and jsdom never would. Weight and size carry the hierarchy. */
 }
 
-/* Square, and bounded by the SHORT axis of the viewport — a stage sized off
-   the width alone runs off the bottom of a 1080-tall screen, which buries the
-   interaction below the fold on one of the two marking viewports. */
+/* 撑满视口剩下的全部高度。
+   原本是一个 min(84vw, 78vh) 的正方形,理由是「按宽度定尺寸会掉到 1080 屏的
+   折线以下」—— 用 flex 占满剩余高度同样满足那条,而且不再留一圈空边。
+   相机那边跟着改成按宽高比撑长边(见 scene.ts 的 resize):短边始终框住整个
+   建筑,长边只是多给一些余量,所以拉宽不会变形,也不会切掉东西。 */
 .stage {
   position: relative;
-  width: min(84vw, 78vh);
-  max-width: 940px;
-  aspect-ratio: 1;
+  flex: 1;
+  width: 100%;
+  min-height: 0;
 
-  /* Ochre sand behind the building, on a sandstone page. Water is lapis and
-     the terraces are sandstone, so nothing shares a colour with what it sits
-     on — which it did when the whole page was cobalt and the water vanished
-     into it, reading as a hole punched through each terrace. */
-  background: var(--ochre-mid);
+  /* 暖沙,§3.7 的 background。原本是 ochre-mid,理由是「沙色底会和沙岩露台
+     同色」—— 但参考图(2.jpg)里最亮的地方正是背景,石头靠自己的暖调和轮廓
+     从里面浮出来,而不是靠背景压深。深底把整张画面压得闷,那是它被换掉的原因。 */
+  background: var(--background);
   transition: filter 400ms ease-out;
 }
 

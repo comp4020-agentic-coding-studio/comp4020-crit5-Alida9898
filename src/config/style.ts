@@ -35,6 +35,13 @@ export const CAMERA = {
   azimuthsDeg: [45, 135, 225, 315] as const,
   /** Half-height of the orthographic frustum, in world units. */
   halfHeight: 6.4,
+  /** 取景时在建筑四周留的余量,世界单位。
+   *
+   *  取景框的是**四个角度的并集**,不是当前角度 —— 按当前角度取景的话,每转
+   *  一次镜头远近就跳一次,而转场那 620ms 正是不许出现意外的时候。并集已经
+   *  比任何单个角度大,所以这个余量只需要一点点;原来是 0.85,画面因此空了
+   *  一大圈。 */
+  framePad: 0.35,
   /** How long a turn takes. Input and every connectivity judgement are
    *  suspended for exactly this long: the in-between angles break the
    *  illusion, and the animation is where that is hidden. */
