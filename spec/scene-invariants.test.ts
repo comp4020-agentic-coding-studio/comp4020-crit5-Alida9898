@@ -232,6 +232,26 @@ for (const { name, level, layout } of LEVELS) {
     });
 
     // —— 4. 几何类型白名单 ——
+    // —— 8. 关卡数据里的每一件东西都点得到 ——
+    it("给关卡数据里的每一件东西都留一份可点的几何", () => {
+      const { built } = stage(level, layout);
+      // 覆盖层的命中区是 `pieces` 一个一个铺出来的(`Stage.pickables()`),
+      // 所以**不在 `pieces` 里的东西,点下去连一圈涟漪都没有**。
+      //
+      // 这条钉的就是那个 bug:命中区一度只给「兽此刻走得到」的 port 铺,而
+      // 「走得到」随相机角度变,于是有些角度点哪儿都没反应 —— 读起来是页面
+      // 死了,不是规则 1 在说话。能点和能走是两件事:前者由这里保证,后者
+      // 只有 `rules.ts` 说了算。
+      const wanted = [
+        ...level.platforms.map((x) => x.id),
+        ...level.pools.map((x) => x.id),
+        ...level.channels.map((x) => x.id),
+        ...level.steps.map((x) => x.id),
+      ];
+      const missing = wanted.filter((id) => !built.pieces.has(id));
+      expect(missing, "这些 port 画得出来却点不到").toEqual([]);
+    });
+
     it("只用白名单里的内置 primitive", () => {
       const { built } = stage(level, layout);
       const strays = [

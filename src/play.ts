@@ -120,6 +120,24 @@ export function mount(el: Elements): () => void {
     }, CAMERA.turnMs);
   }
 
+  /**
+   * 一次点击落在画面上的哪一点(0–1)。
+   *
+   * 用**手指真正点到的那一点**,不是砖的中心 —— 「我点的是这里」说的就是这里。
+   * 键盘触发的 click 没有坐标(`detail === 0`),那时才退回砖的中心;没有
+   * `port` 可退的(点空处)就落在画面正中。
+   */
+  function spotOf(e: MouseEvent, port?: string): { x: number; y: number } {
+    if (e.detail === 0) {
+      return port ? (stage?.toScreen(port) ?? { x: 0.5, y: 0.5 }) : { x: 0.5, y: 0.5 };
+    }
+    const box = el.stage.getBoundingClientRect();
+    return {
+      x: (e.clientX - box.left) / box.width,
+      y: (e.clientY - box.top) / box.height,
+    };
+  }
+
   function placeHandles(): void {
     const buttons: HTMLButtonElement[] = [];
 
@@ -133,16 +151,30 @@ export function mount(el: Elements): () => void {
       b.style.left = `${x * 100}%`;
       b.style.top = `${y * 100}%`;
       b.setAttribute("aria-label", `露台 ${part}`);
-      b.addEventListener("click", () => {
+      b.addEventListener("click", (e) => {
+        if (swung && e.detail !== 0) return;
         // 涟漪挂在 stage 上,不挂在按钮上 —— 按钮下一帧就被 placeHandles()
         // 换掉了,挂在它身上的动画一帧都放不完。
+        if (locked) {
+          rippleAt(el.stage, x, y, INPUT.rippleMissMs, true);
+          return;
+        }
         rippleAt(el.stage, x, y, INPUT.rippleMs);
         act(part);
       });
       buttons.push(b);
     }
 
-    // 兽此刻走得到的每一处,都是可点的:地砖、泉眼,以及已经灌满的水渠。
+    // 画面里**每一件画得出来的东西**都是可点的:地砖、泉眼、水渠,不管这个
+    // 角度走不走得到。
+    //
+    // 以前只给「走得到」的 port 铺命中区,于是点在别处**什么也不发生** ——
+    // 连一圈涟漪都没有。而「走得到」是随相机角度变的,所以玩起来就是
+    // 「有些角度点哪儿都没反应」,读起来像页面卡住了,而不像规则 1 在说话。
+    //
+    // 现在分成两件事:**能点**(有几何就能点,由 `pickables()` 给)和
+    // **能走**(只有 `walkableFrom` 说了算)。点到走不到的地方 —— 兽转头
+    // 看过去,涟漪走 miss 那一档。规则 1 一条没改:它照样过不去。
     //
     // 可点区域是**那件东西看得见的整个形状**,不是它顶面那个小菱形。
     //
@@ -155,16 +187,21 @@ export function mount(el: Elements): () => void {
     const reach = here ? walkableFrom(level, state, here) : new Set<string>();
     // 轮廓会互相重叠,所以按离相机的远近排:近的后进 DOM,压在上面。
     // 不排的话,点在近处那座塔上,命中的可能是被它挡住的那一块。
-    const targets = [...reach]
+    const targets = (stage?.pickables() ?? [])
       .filter((p) => p !== here)
       .sort((a, b) => (stage?.depthOf(a) ?? 0) - (stage?.depthOf(b) ?? 0));
     for (const port of targets) {
+      const live = reach.has(port);
       const quad: { x: number; y: number }[] = stage?.toScreenHull(port) ?? [];
       const b = document.createElement("button");
       b.type = "button";
       const isPool = level.pools.some((p) => p.id === port);
-      b.className = `handle walk area${isPool ? " pool" : ""}`;
+      b.className = `handle walk area${isPool ? " pool" : ""}${live ? "" : " miss"}`;
       b.setAttribute("aria-label", port);
+      // 走不到的那些**不进 Tab 顺序**。它们是鼠标的回执(点了有涟漪、兽转头),
+      // 不是可以操作的东西 —— 让键盘一格格 Tab 过一整座塔的死按钮,是把
+      // 「这里能点」这句话说成了谎。能 Tab 到的,永远是真的按下去有用的。
+      if (!live) b.tabIndex = -1;
 
       if (quad.length >= 3) {
         const xs = quad.map((p: { x: number; y: number }) => p.x);
@@ -195,15 +232,23 @@ export function mount(el: Elements): () => void {
       }
 
       b.addEventListener("click", (e) => {
-        if (locked) return;
-        // 涟漪落在**手指真正点到的那一点**上,不是砖的中心 —— 「我点的是这里」
-        // 说的就是这里。键盘触发的 click 没有坐标(detail === 0),那时才退回
-        // 砖的中心。
-        const box = el.stage.getBoundingClientRect();
-        const spot =
-          e.detail === 0
-            ? (stage?.toScreen(port) ?? { x: 0.5, y: 0.5 })
-            : { x: (e.clientX - box.left) / box.width, y: (e.clientY - box.top) / box.height };
+        // 这一下是拖出来的转场,不是点击。键盘触发的 click 没有指针
+        // (detail === 0),不会是拖动的产物,所以不受这条影响。
+        if (swung && e.detail !== 0) return;
+        const spot = spotOf(e, port);
+        // 转场动画期间的任何判定都没有意义(§3.2),但那一下仍然被收到了 ——
+        // 给它一圈 miss 涟漪,而不是装作没发生。
+        if (locked) {
+          rippleAt(el.stage, spot.x, spot.y, INPUT.rippleMissMs, true);
+          return;
+        }
+        if (!live) {
+          // 规则 1:屏幕上没连上就是没连上,兽不能过去。它只转头看一眼 ——
+          // 「我看见了,这个角度过不去」。玩家下一步该做的是转视角。
+          rippleAt(el.stage, spot.x, spot.y, INPUT.rippleMissMs, true);
+          stage?.faceTo(port);
+          return;
+        }
         rippleAt(el.stage, spot.x, spot.y, INPUT.rippleMs);
         state = { ...state, beastAt: port };
         stage?.setBeast(port);
@@ -285,10 +330,15 @@ export function mount(el: Elements): () => void {
   // 落在下一个枚举档位上。§3.2 禁止自由环绕,理由是中间角度必然破坏错觉;
   // 那条禁令对手势和对方向键是同一条。
   let dragFrom: number | null = null;
+  /** 这一次手势有没有已经转成了一段转场。有的话,随后那个 click 是拖动的
+   *  副产品,不是点击,要吞掉 —— 否则手一松,兽就朝拖动结束的位置走了。 */
+  let swung = false;
 
   const onPointerDown = (e: PointerEvent): void => {
-    // 走路的把手是真按钮,点在上面的不算拖动的起手。
-    if ((e.target as HTMLElement).closest("button")) return;
+    swung = false;
+    // 以前这里写着「点在按钮上的不算拖动的起手」。命中区铺满整个画面之后
+    // 那句话就等于「哪儿都拖不动」—— 露台是整层高的塔,按钮把画面占满了。
+    // 现在按钮上也能起手,拖过阈值就是转视角,没拖过就是点击,由 `swung` 分。
     dragFrom = e.clientX;
   };
 
@@ -299,6 +349,7 @@ export function mount(el: Elements): () => void {
     if (step === 0) return;
     // 一次拖动只落一档:一次手势 = 一段转场,和方向键按一下完全一样。
     dragFrom = null;
+    swung = true;
     swing(step);
   };
 
@@ -306,6 +357,21 @@ export function mount(el: Elements): () => void {
     dragFrom = null;
   };
 
+  /**
+   * 点在**没有东西**的地方 —— 天空、塔与塔之间的缝。
+   *
+   * 照样荡一圈,只是 miss 那一档:作者的要求是「无论哪个角度,点了就要有回执」,
+   * 而「这里什么也没有」和「这里过不去」对玩家是同一件事 —— 都不是「页面死了」。
+   * 落在按钮上的点击由按钮自己处理,这里只收漏下来的。
+   */
+  const onStageClick = (e: MouseEvent): void => {
+    if ((e.target as HTMLElement).closest("button")) return;
+    if (swung && e.detail !== 0) return;
+    const spot = spotOf(e);
+    rippleAt(el.stage, spot.x, spot.y, INPUT.rippleMissMs, true);
+  };
+
+  el.stage.addEventListener("click", onStageClick);
   el.stage.addEventListener("pointerdown", onPointerDown);
   el.stage.addEventListener("pointermove", onPointerMove);
   el.stage.addEventListener("pointerup", onPointerEnd);
@@ -363,6 +429,7 @@ export function mount(el: Elements): () => void {
     if (advance !== undefined) clearTimeout(advance);
     cancelAnimationFrame(frame);
     window.removeEventListener("keydown", onKey);
+    el.stage.removeEventListener("click", onStageClick);
     el.stage.removeEventListener("pointerdown", onPointerDown);
     el.stage.removeEventListener("pointermove", onPointerMove);
     el.stage.removeEventListener("pointerup", onPointerEnd);

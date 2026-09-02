@@ -22,9 +22,13 @@ export function rippleAt(
   x: number,
   y: number,
   ms: number,
+  miss = false,
 ): HTMLElement {
   const ring = layer.ownerDocument.createElement("span");
-  ring.className = "ripple";
+  // `miss` = 点到了、但这一下走不了。同一个形状,更暗更快 —— 「收到了」和
+  // 「这一下有用」是两件事。两个完全一样的话,兽没动就分不出是没点到还是
+  // 过不去,而那正是这个游戏要玩家读懂的东西(规则 1)。
+  ring.className = miss ? "ripple miss" : "ripple";
   // 纯装饰,而且它说的事(「你点了这里」)屏幕阅读器已经从按钮上知道了。
   ring.setAttribute("aria-hidden", "true");
   ring.style.left = `${x * 100}%`;

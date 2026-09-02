@@ -606,6 +606,18 @@ export type Stage = {
   /** 哪些渠灌满了、哪些半满、哪些池子有水。 */
   setWater: (filled: Set<PortId>, half: PortId[], wet: Set<PortId>) => void;
   setBeast: (port: PortId) => void;
+  /**
+   * 只把兽的朝向转向某个 port,**不挪它**。
+   *
+   * 这是「点了走不到的地方」的回答:规则 1 说屏幕上没连上就是没连上,所以兽
+   * 不能过去;但一次点击必须有回执,否则读起来是「没点到」。转头说的是
+   * 「我看见了,过不去」—— 走得到的时候用的也是这一个动作(先转身再走),
+   * 不是一个只在失败时出现的专用动画。
+   */
+  faceTo: (port: PortId) => void;
+  /** 画面里所有画得出轮廓的 port。覆盖层拿它铺命中区 —— **能点**和**能走**
+   *  是两件事:这里给的是前者,后者只有 `rules.ts` 说了算。 */
+  pickables: () => PortId[];
   /** 通关了没有。通关的那一刻喷泉开始喷水,那是全部的通关反馈。 */
   setSolved: (solved: boolean) => void;
   /** 某个 port 在画面上的位置(0–1),给 DOM 按钮定位用。用的是同一个投影。 */
@@ -737,6 +749,8 @@ export function createStage(canvas: HTMLCanvasElement, level: Level, layout: Lay
 
   let beastWant: Vec3 | null = null;
   let beastShown: Vec3 | null = null;
+  let beastYawWant = 0;
+  let beastYawShown = 0;
 
   /** 吸附到最近的**枚举角度**,不是最近的 90 的倍数 —— 方位角是 45/135/225/315,
    *  一个都不是 90 的倍数,`Math.round(135/90)*90` 会给出 180,于是按钮一直落在
@@ -768,9 +782,50 @@ export function createStage(canvas: HTMLCanvasElement, level: Level, layout: Lay
     for (const s of grandSpray.values()) s.group.visible = solved;
   }
 
+  /** 某个 port 锚点的水平中心。渠有两端,取中点 —— 转头面向的是「那件东西」,
+   *  不是它的某一头。 */
+  function flatCentre(port: PortId): { x: number; z: number } | null {
+    const pts = anchorPoints(port);
+    if (pts.length === 0) return null;
+    let x = 0;
+    let z = 0;
+    for (const p of pts) {
+      x += p[0] / pts.length;
+      z += p[2] / pts.length;
+    }
+    return { x, z };
+  }
+
+  /**
+   * 把朝向对准水平面上的某个方向。
+   *
+   * `atan2` 在这里是**允许**的:§3.3 禁的是「覆盖层定位里的角度算术」,那条
+   * 禁令针对的是把方位角对 90 取整那个 bug。这是场景里一个物体的朝向,既不
+   * 参与定位也不参与判定,和它无关。
+   *
+   * 兽的头朝 +Z(见 `BEAST.headZ`),所以 `atan2(dx, dz)` 而不是反过来。
+   */
+  function faceToward(fromX: number, fromZ: number, toX: number, toZ: number): void {
+    const dx = toX - fromX;
+    const dz = toZ - fromZ;
+    // 站在原地不动的那一下没有方向可言,保持当前朝向,别让它抽一下回到 0。
+    if (Math.abs(dx) < 1e-3 && Math.abs(dz) < 1e-3) return;
+    beastYawWant = Math.atan2(dx, dz);
+  }
+
+  function faceTo(port: PortId): void {
+    const to = flatCentre(port);
+    const from = beastWant;
+    if (!to || !from) return;
+    faceToward(from[0], from[2], to.x, to.z);
+  }
+
   function setBeast(port: PortId): void {
     const place = layout.ports[port];
     if (!place || !("at" in place)) return;
+    // 先转身,再迈步 —— 从**现在站的地方**朝目标,所以要赶在 beastWant
+    // 被改写之前算。
+    if (beastWant) faceToward(beastWant[0], beastWant[2], place.at[0], place.at[2]);
     // 露台的原点**就是**它的顶面,所以兽踩的高度就是 port 的 y —— 不用再
     // 心算厚度。这一行以前是 `+ terraceBody/2 + terraceSlab`,那是旧原点的
     // 遗物,厚度一改就悄悄错位。
@@ -794,7 +849,7 @@ export function createStage(canvas: HTMLCanvasElement, level: Level, layout: Lay
       // 兽走过去,不是瞬移。这一段位移就是「你点的那一下起作用了」的反馈,
       // 而这一关没有任何文字或 HUD 来说这件事。
       if (beastWant && beastShown) {
-        const k = Math.min(1, dt * 7);
+        const k = Math.min(1, dt * BEAST.stepRate);
         let moving = false;
         for (let i = 0; i < 3; i++) {
           const d = beastWant[i] - beastShown[i];
@@ -807,6 +862,16 @@ export function createStage(canvas: HTMLCanvasElement, level: Level, layout: Lay
           beast.position.set(beastShown[0], beastShown[1] + bob, beastShown[2]);
         } else {
           beast.position.set(...beastShown);
+        }
+      }
+      // 转头。走最短的一边,和相机转场同一个道理 —— 差 350° 就该往回转 10°。
+      {
+        let d = beastYawWant - beastYawShown;
+        while (d > Math.PI) d -= Math.PI * 2;
+        while (d < -Math.PI) d += Math.PI * 2;
+        if (Math.abs(d) > 1e-3) {
+          beastYawShown += d * Math.min(1, dt * BEAST.yawRate);
+          beast.rotation.y = beastYawShown;
         }
       }
       // 喷泉。水滴各自错开相位,沿一条抛物线出去再落回盆里 —— 一条弧线就够
@@ -855,6 +920,8 @@ export function createStage(canvas: HTMLCanvasElement, level: Level, layout: Lay
     turning: () => Math.abs(azShown - azWant) > 0.01,
     setWater,
     setBeast,
+    faceTo,
+    pickables: () => [...pieces.keys()],
     setSolved,
     toScreen: (port) => {
       const pts = anchorPoints(port);

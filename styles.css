@@ -189,6 +189,31 @@ h1 {
   }
 }
 
+/* 点到了,但这一下走不了 —— 走不到的砖、天空、以及转场动画播到一半时的点击。
+   同一个记号,更淡、更小、更快收:「收到了」说全了,「这一下有用」没说。
+
+   颜色仍是青金深 —— 换成沙岩深(#A8906F)在暖沙底(#F2E4CE)上只有 2.44:1,
+   而这一圈是唯一确认点击的东西,不该靠一个看不太清的颜色去说。区别交给
+   透明度和尺寸,不交给对比度。 */
+.ripple.miss {
+  border-width: 1px;
+
+  /* 只换关键帧;时长仍由 `INPUT.rippleMissMs` 内联写在元素上。 */
+  animation-name: ripple-miss;
+}
+
+@keyframes ripple-miss {
+  from {
+    opacity: 0.5;
+    scale: 0.35;
+  }
+
+  to {
+    opacity: 0;
+    scale: 0.85;
+  }
+}
+
 /* 键盘用户仍然需要看见焦点在哪。 */
 .handle:focus-visible {
   outline: 3px solid var(--lapis-dark);
