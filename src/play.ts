@@ -226,14 +226,19 @@ export function mount(el: Elements): () => void {
    */
   function paintProgress(): void {
     el.progress.replaceChildren(
-      ...LEVELS.map((entry, i) => {
+      ...LEVELS.map((_, i) => {
         const dot = document.createElement("li");
         const b = document.createElement("button");
         b.type = "button";
         b.className = i < index ? "done" : i === index ? "here" : "";
-        // 读屏要念得出这是第几关、叫什么 —— canvas 对 axe 完全不透明,
-        // 这排按钮是整个页面上唯一说得出「有几关」的东西。
-        b.setAttribute("aria-label", `第 ${i + 1} 关:${entry.level.name}`);
+        // 读屏要念得出这是第几关 —— canvas 对 axe 完全不透明,这排按钮是整个
+        // 页面上唯一说得出「有几关」的东西。
+        //
+        // 用 `Level N` 而不是关卡名:关卡名是中文的(它们是写给作者看的),而
+        // 页面声明的是 `lang="en-AU"`。把中文塞进 en 的 aria-label 就是骗读屏,
+        // 它会用英文发音去念 —— 而 axe 查的是「有没有 lang、合不合法」,不是
+        // 「lang 说的是不是实话」,所以这条没有任何传感器接得住。
+        b.setAttribute("aria-label", `Level ${i + 1}`);
         if (i === index) b.setAttribute("aria-current", "true");
         b.addEventListener("click", () => {
           if (i !== index) load(i);
