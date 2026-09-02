@@ -76,8 +76,45 @@ is built around was never seen. Flipping the offset to the far side put the
 spout in front and the basin behind, so water pours *into* it
 ([74caa4e](../../commit/74caa4e)).
 
-No sensor could hold this. Mine checks that two points coincide; the bug was
-that they coincided *too well*. Front-to-back is eyes only.
+**And then the author reversed that fix, for a reason I had not seen.** Far side
+means the channel is nearer the camera, so the channel draws *over* the basin —
+the fountain ends up sitting under its own water. Near side is the one that
+reads: the pool's rim and surface are in front, and the channel goes in beneath
+them, like a conduit entering a wall. Level 1 moved back to the near side
+([0b90413](../../commit/0b90413)) and level 2 had to follow, because I had built
+it on the opposite convention and the two levels were contradicting each other
+([cd7ee9f](../../commit/cd7ee9f)).
+
+No sensor could hold any of this. Mine checks that two points coincide; the bug
+was that they coincided *too well*. Front-to-back is eyes only — and which side
+is right is a judgement about what the picture should say, not a fact geometry
+can supply.
+
+## The mistake I made three times in one week
+
+An anchor is a **grid centre**. A join is an **edge**. `spec/iso.test.ts` asks
+whether two anchors project to the same pixel, which is exactly right for water
+and *necessary but not sufficient* for anything the player walks on. I did not
+have that sentence, so I paid for it three times:
+
+- The channel drew from pool **centre** to pool centre and speared through half
+  the target pool. Fixed by insetting both ends to the rim.
+- The staircase was built **centred on its bottom anchor** instead of running
+  `from` → `to`, so it overshot behind the start tile and stopped half way up.
+  Invisible at a one-tile run (0.5 off); I then lengthened the run to two tiles
+  for unrelated reasons and doubled the error, which reads as "the last change
+  broke it" when nothing about that change was wrong
+  ([3b6c018](../../commit/3b6c018)).
+- The staircase climbed **perpendicular** to the deck it was supposed to reach,
+  so its top edge and the deck's edge never faced each other. No drawing fix
+  rescues that; it is a layout constraint, and it is now one of the conditions
+  the level-2 coordinate search has to satisfy.
+
+Every one of those was green the whole time. The lesson went into `CLAUDE.md`
+as its own section, along with its front-to-back twin: two things on the same
+pixel are necessarily one in front of the other, and which one is decided by
+the sign of the hidden direction — so "X should be on top" is always a
+modelling change, never a draw-order one ([ab0e105](../../commit/ab0e105)).
 
 ## Things I got wrong, and what fixed them
 
@@ -94,12 +131,27 @@ that they coincided *too well*. Front-to-back is eyes only.
   camera. One gesture with three outcomes is no gesture at all.
 - **Then I over-corrected**: moved the camera to arrow keys only, which
   replaced a *discoverable* action with an undiscoverable one. In a game with
-  no words, whether an input can be stumbled into is part of the design. Now:
-  click a thing to act on the building, click empty space to turn
+  no words, whether an input can be stumbled into is part of the design
   ([f16499e](../../commit/f16499e)).
+- **Splitting the two verbs across one gesture didn't work either.** "Click a
+  thing to walk, click empty space to turn" reads as separable when you write
+  it down and is not separable in the hand — both are press-and-release, so a
+  first-time player cannot tell which one they just triggered. Turning is now a
+  **drag**; a click means one thing only. The spec's "no drag interactions" ban
+  came off the list for it, with the reasoning recorded
+  ([d9a554c](../../commit/d9a554c)).
 - **I marked clickable spots with dashed circles** — a HUD that couldn't
   explain itself, in a game whose spec forbids HUD. Removed; the beast walking
-  is the feedback.
+  is the feedback. What replaced it is smaller and only exists at the moment of
+  the click: a ripple where the pointer actually landed
+  ([1905601](../../commit/1905601)).
+- **The hit target was the tile's top face**, which was fine until terraces
+  became full-height towers and the top face became a small diamond on a tall
+  block. Clicking the tower did nothing, so the game felt like it registered
+  clicks *sometimes* — the hardest kind of fault to report, and the author hit
+  it repeatedly before it got named. The hit area is now the piece's projected
+  outline, still from the same camera projection, no raycast
+  ([0833347](../../commit/0833347)).
 
 ## Where the harness grew
 
@@ -112,7 +164,22 @@ implementation is allowed to be red.
 
 ## What is not done
 
-One level of four. No planting feedback on completion — the spec asks for
-terraces flowering as water reaches them, and the basin filling is currently
-the only signal. The mušḫuššu is a placeholder shape, not the Ishtar Gate
-relief. Levels 2–4 have engine and sensors waiting but no data.
+**Two levels of four.** Level 2 puts two joins in the level that cannot both
+hold at the same azimuth — the stairs at one angle, the corner aqueduct at
+another — so the shape is turn, climb, turn, pour, and rule 3 is what makes it
+work: the beast has to already be standing on the cistern when the second turn
+lands ([a53f5a7](../../commit/a53f5a7)). Its coordinates are not placed by
+hand; they are enumerated against the sensors' own predicates and the first
+solution that satisfies all of them is taken.
+
+Completion feedback exists now, but not the one the spec asked for. The spec
+wants every tier the water passed through to grow date palms and vines. What
+shipped is the fountain starting to spray at the instant the cistern tops out —
+the author's call, recorded in §6 along with what it costs: the foliage is the
+game's own title made visible, and `date` green is now the one hue in the
+palette with nothing using it ([37418a8](../../commit/37418a8)).
+
+The mušḫuššu is still a placeholder shape, not the Ishtar Gate relief. Levels 3
+and 4 have engine and sensors waiting but no data, and level 2 took on some of
+what level 3 was going to teach, so those two need re-scoping before they are
+built.
