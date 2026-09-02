@@ -188,6 +188,39 @@ single-screen prototype carries one --- while it stays a single link this
 section costs nothing, and the moment it grows past that, pin them again rather
 than trusting the memory.
 
+## Two anchors on the same pixel is not two surfaces meeting
+
+`spec/iso.test.ts` asks whether two ports' **anchor points** project to the same
+pixel. That is the right question for water --- a channel mouth and a pool rim
+either coincide or they don't. It is *necessary but not sufficient* for anything
+the player walks on, and the gap between those two has now cost three rounds in
+one week:
+
+- The channel drew from pool **centre** to pool centre, so it speared through
+  half the target pool. Fixed by insetting both ends to the rim.
+- The staircase's flight was built **centred on its bottom anchor** instead of
+  running from `from` to `to`, so it overshot behind the start tile and stopped
+  half way to the top. Invisible while the run was one tile (0.5 off); doubling
+  the run to two tiles doubled the error and made it obvious --- which reads as
+  "the last change broke it" when nothing about that change was wrong.
+- The staircase climbed **perpendicular** to the deck it was supposed to reach,
+  so its top edge and the deck's edge did not face each other at all. No drawing
+  fix can rescue that; it is a layout constraint (the destination must sit on the
+  run direction), and it now lives in the level-2 search.
+
+The rule that generalises: **an anchor is a grid centre; a join is an edge.**
+Anything drawn between two anchors has to stop at the neighbours' edges, and the
+level data has to put those neighbours where the drawn thing is actually
+pointing. When a join "looks wrong but the tests are green", suspect this before
+suspecting the table.
+
+Front-to-back is the same story in the other axis: two things on the same pixel
+are necessarily one in front of the other, and which one is decided by the
+hidden-direction sign, not by anything drawable. §3.4 forbids `renderOrder`, so
+"X should be on top" is always a modelling change --- move X toward the camera
+along that azimuth's hidden direction. The beast standing under its own staircase
+was this.
+
 ## A gesture's direction is untestable where it usually lives
 
 C4's pour gesture sent the water *up* when the hand went *down*. Both directions
