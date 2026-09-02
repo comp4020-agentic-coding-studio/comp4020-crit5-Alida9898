@@ -21,8 +21,8 @@ mostly a record of me being redirected.
 | the brief was | until |
 |---|---|
 | a pipe-grid game with finite water | the author replaced it wholesale with the Babylon illusion spec |
-| player turns the **camera** | "先固定相机,只转砖块" |
-| player turns the **bricks** | two reference screenshots: "我说的不是画风,是视角转动" |
+| player turns the **camera** | "先固定相机,只转砖块" — *pin the camera, rotate the bricks only* |
+| player turns the **bricks** | two reference screenshots: "我说的不是画风,是视角转动" — *I am not talking about the art style, I mean the view rotating* |
 | both, camera first | current |
 
 The one thing I got right in that churn was refusing to hard-code the choice.

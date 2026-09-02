@@ -1,4 +1,4 @@
-# Crit 5 — 空中花园引水渠 (Hanging Gardens Aqueduct)
+# Crit 5 — Hanging Gardens Aqueduct
 
 ## What was the breakthrough that moved the work forward?
 

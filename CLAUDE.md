@@ -43,6 +43,32 @@ Two sensors carried forward from A1, because the template roster has neither:
 `check` also runs `oxlint` and `stylelint`, and `spec/accessibility.test.ts` runs
 axe-core in jsdom. Read the sections below for what each of them cannot see.
 
+## Which language goes where
+
+The author and I talk in Chinese. **Everything that leaves the conversation is
+English**: commit messages, `PROCESS.md`, `reflections/*.md`, this file, and any
+text the deployed page shows. Those all have a reader who is not the author —
+a marker, a tutor, whoever opens the public repo — and a commit log they cannot
+read is evidence they cannot mark.
+
+This was got wrong for a whole week: the conversation was Chinese, so the commit
+messages came out Chinese too, and by the time it was noticed the repo was public
+and the history could not be rewritten. So it is written here rather than
+remembered.
+
+Two things that are **not** exceptions:
+
+- **Quoting the author is quoting.** Their words stay in their language, with a
+  short English gloss beside them. `PROCESS.md` does this for the two
+  redirections that changed the brief.
+- **Code comments follow the code's audience**, which in this repo is the author,
+  so they stay Chinese. If that ever changes, it changes as one deliberate pass,
+  not drifting file by file.
+
+And when the page's own language changes, `lang`, the aria-labels and any
+letter-spacing tuned for one script have to change with it — see the title going
+English and back.
+
 ## This file is yours
 
 A starting point, not a rulebook: what you add to it is the harness, and the
