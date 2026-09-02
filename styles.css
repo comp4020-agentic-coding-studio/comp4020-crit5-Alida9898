@@ -69,10 +69,13 @@ main {
 
 h1 {
   margin: 0;
-  font-size: 1rem;
+  font-size: 1.05rem;
   font-weight: 500;
-  letter-spacing: 0.3em;
-  text-transform: uppercase;
+
+  /* 0.3em 是给拉丁字母排的;中文方块字本来就自带字距,再拉开就散成一个个孤字。
+     `text-transform: uppercase` 对中文没有作用,一并去掉 —— 留着是一条只在
+     换语言时才会发现自己没用的规则。 */
+  letter-spacing: 0.18em;
 
   /* The title names the game; it never explains it. No opacity here: fading
      lapis on sandstone drops it under 4.5:1, which `ab a11y` catches in real
