@@ -532,7 +532,17 @@ cover a load-bearing seam while the player is still solving.
 
 Audio (all of it), mobile touch controls (desktop only: drag + mouse click +
 arrow keys + Space; mobile merely has to open), combat, timers, score, health,
-text tutorials, menus, a title screen, level select, saves, a second beast.
+text tutorials, a title screen, saves, a second beast.
+
+**"Level select" left this list on 2026-09-02, at the author's direction, and
+"menus" did not.** The progress dots that were already on the page became
+buttons: same elements, same position, now clickable, with an `aria-label`
+naming each level. Nothing was added to the screen and no menu screen exists ---
+which is the distinction worth keeping, because what §7 is protecting is a
+prototype that opens straight into the puzzle with no text and no chrome in
+front of it. The dots also happen to be the only thing on the page that tells a
+screen reader how many levels there are: a `<canvas>` is opaque to axe, so the
+overlay is where any such fact has to live.
 
 **"Drag interactions" left this list on 2026-09-01, at the author's direction.**
 Turning the view is a drag; a click now means one thing only --- send the beast

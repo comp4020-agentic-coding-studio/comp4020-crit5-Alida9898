@@ -206,11 +206,29 @@ export function mount(el: Elements): () => void {
     el.handles.replaceChildren(...buttons);
   }
 
+  /**
+   * 底下那排点:既是进度,也是选关。
+   *
+   * §7 的「本版不做」里列着 menus 和 level select;2026-09-02 作者要选关,
+   * 记在 §7 里。做法是**把已有的进度点变成可点的**,不是另开一个菜单页 ——
+   * 屏幕上不多一个元素,只是本来就在那儿的点现在能按。没有文字、没有标题画面,
+   * §7 其余的限制一条没动。
+   */
   function paintProgress(): void {
     el.progress.replaceChildren(
-      ...LEVELS.map((_, i) => {
+      ...LEVELS.map((entry, i) => {
         const dot = document.createElement("li");
-        dot.className = i < index ? "done" : i === index ? "here" : "";
+        const b = document.createElement("button");
+        b.type = "button";
+        b.className = i < index ? "done" : i === index ? "here" : "";
+        // 读屏要念得出这是第几关、叫什么 —— canvas 对 axe 完全不透明,
+        // 这排按钮是整个页面上唯一说得出「有几关」的东西。
+        b.setAttribute("aria-label", `第 ${i + 1} 关:${entry.level.name}`);
+        if (i === index) b.setAttribute("aria-current", "true");
+        b.addEventListener("click", () => {
+          if (i !== index) load(i);
+        });
+        dot.append(b);
         return dot;
       }),
     );

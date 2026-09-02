@@ -209,23 +209,51 @@ h1 {
 }
 
 .progress li {
+  display: flex;
+}
+
+/* 点本身就是按钮:进度和选关是同一个东西,屏幕上不多一个元素。
+   命中区比看得见的点大得多 —— 0.5rem 的圆点点不中,而这排按钮是键盘用户
+   唯一能到达的「有几关」。 */
+.progress button {
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.progress button::before {
+  display: block;
   width: 0.5rem;
   height: 0.5rem;
+  margin: 0 auto;
   border: 1px solid var(--lapis-dark);
   border-radius: 50%;
+  content: "";
   transition: background 200ms ease-out;
 }
 
-.progress li.here {
+.progress button.here::before {
   background: var(--lapis-dark);
 }
 
-.progress li.done {
+.progress button.done::before {
   border-color: var(--date-mid);
   background: var(--date-mid);
 }
 
+.progress button:focus-visible {
+  outline: 3px solid var(--lapis-dark);
+  outline-offset: 2px;
+}
+
 @media (prefers-reduced-motion: reduce) {
+  .progress button::before {
+    transition: none;
+  }
+
   .attap canvas {
     animation: none;
   }

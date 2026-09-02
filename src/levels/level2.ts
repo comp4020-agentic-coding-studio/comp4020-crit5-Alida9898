@@ -47,17 +47,17 @@ export const level2: Level = {
   waterLinks: [
     // 上游口坐在蓄水池上,任何角度都接着。
     { from: "cistern", to: "chanA", when: {} },
-    // 第一段渠的出水口只在 225° 落到拐角池。
-    { from: "chanA", to: "elbow", when: { camera: 225 } },
+    // 第一段渠的出水口只在 135° 落到拐角池。
+    { from: "chanA", to: "elbow", when: { camera: 135 } },
     { from: "elbow", to: "chanB", when: {} },
-    // 第二段渠的出水口只在 225° 落到终点喷泉 —— 和上一条同一个角度,
+    // 第二段渠的出水口只在 135° 落到终点喷泉 —— 和上一条同一个角度,
     // 所以一次转视角就把整条拐角渠接通。
-    { from: "chanB", to: "grandBasin", when: { camera: 225 } },
+    { from: "chanB", to: "grandBasin", when: { camera: 135 } },
   ],
 
   walkLinks: [
-    // 楼梯的底只在 135° 看起来落在出生点上。这是这一关的第一个断口。
-    { between: ["birth", "stair"], when: { camera: 135 } },
+    // 楼梯的底只在 45°(开局那一档)看起来落在出生点上。这是这一关的第一个断口。
+    { between: ["birth", "stair"], when: { camera: 45 } },
     // 楼梯顶和蓄水池是**真的**挨着的,任何角度都能迈过去 —— 一关只教一件事,
     // 上去之后不该再有第二个惊喜。
     { between: ["stair", "cistern"], when: {} },
@@ -99,21 +99,21 @@ export const level2Layout: Layout = {
     // —— 作者的原话是「没有任何一个角度可以连接出起始点和第一个水池」。
     // 传感器当时是绿的:它量的是两个**锚点**重合,而能不能走过去看的是两个
     // **面**碰上。锚点重合是必要条件,不是充分条件。
-    stair: { from: [-1, 1, 1], to: [-1, 2, 3] },
+    stair: { from: [2, 2, 2], to: [0, 3, 2] },
 
-    cistern: { at: [0, 2, 3] },
-    cisternDeck: { at: [0, 2, 3] },
+    cistern: { at: [0, 3, 1] },
+    cisternDeck: { at: [0, 3, 1] },
 
     // 第一段:沿 -z 两格。
-    chanA: { from: [0, 2, 3], to: [0, 2, 1] },
+    chanA: { from: [0, 3, 1], to: [-2, 3, 1] },
 
-    elbow: { at: [-1, 3, 0] },
-    elbowDeck: { at: [-1, 3, 0] },
+    elbow: { at: [-3, 4, 2] },
+    elbowDeck: { at: [-3, 4, 2] },
 
     // 第二段:沿 -x 两格。方向和第一段不同,屏幕上因此是一个真正的 90° 拐角。
-    chanB: { from: [-1, 3, 0], to: [-3, 3, 0] },
+    chanB: { from: [-3, 4, 2], to: [-3, 4, 5] },
 
-    grandBasin: { at: [-4, 4, -1] },
-    basinDeck: { at: [-4, 4, -1] },
+    grandBasin: { at: [-4, 5, 6] },
+    basinDeck: { at: [-4, 5, 6] },
   },
 };
