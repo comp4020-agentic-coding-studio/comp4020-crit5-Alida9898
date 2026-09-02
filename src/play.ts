@@ -144,24 +144,31 @@ export function mount(el: Elements): () => void {
 
     // 兽此刻走得到的每一处,都是可点的:地砖、泉眼,以及已经灌满的水渠。
     //
-    // 可点区域是**那块砖本身**,不是砖中心的一个小圆点。四个角穿过相机投影
-    // 出来(§3.3),再用 clip-path 把按钮裁成那块砖顶面的形状 —— clip-path
-    // 同时裁命中区域,所以相邻两块砖的外接矩形叠得再多也不会抢对方的点击。
-    // 没有射线检测:「哪里可点」和「哪里画得出来」是同一次投影的两个出口。
+    // 可点区域是**那件东西看得见的整个形状**,不是它顶面那个小菱形。
+    //
+    // 第一版只取顶面一格的四个角。露台后来变成整层高的塔,顶面就只是塔上一个
+    // 小菱形 —— 点在塔身上落空,而且塔越高落空的面积越大,读起来就是「有时候
+    // 点不到」。现在取那件几何包围盒的八个角、投影、求凸包,再用 clip-path 裁
+    // 出轮廓;clip-path 同时裁**命中区域**,所以外接矩形叠得再多也不会抢别人的
+    // 点击。没有射线检测:「哪里可点」和「哪里画得出来」是同一次投影的两个出口。
     const here = state.beastAt;
     const reach = here ? walkableFrom(level, state, here) : new Set<string>();
-    for (const port of reach) {
-      if (port === here) continue;
-      const quad = stage?.toScreenQuad(port) ?? [];
+    // 轮廓会互相重叠,所以按离相机的远近排:近的后进 DOM,压在上面。
+    // 不排的话,点在近处那座塔上,命中的可能是被它挡住的那一块。
+    const targets = [...reach]
+      .filter((p) => p !== here)
+      .sort((a, b) => (stage?.depthOf(a) ?? 0) - (stage?.depthOf(b) ?? 0));
+    for (const port of targets) {
+      const quad: { x: number; y: number }[] = stage?.toScreenHull(port) ?? [];
       const b = document.createElement("button");
       b.type = "button";
       const isPool = level.pools.some((p) => p.id === port);
       b.className = `handle walk area${isPool ? " pool" : ""}`;
       b.setAttribute("aria-label", port);
 
-      if (quad.length === 4) {
-        const xs = quad.map((p) => p.x);
-        const ys = quad.map((p) => p.y);
+      if (quad.length >= 3) {
+        const xs = quad.map((p: { x: number; y: number }) => p.x);
+        const ys = quad.map((p: { x: number; y: number }) => p.y);
         const x0 = Math.min(...xs);
         const x1 = Math.max(...xs);
         const y0 = Math.min(...ys);
@@ -174,10 +181,13 @@ export function mount(el: Elements): () => void {
         b.style.height = `${h * 100}%`;
         // clip-path 的百分比是相对按钮自己的框,所以四个角要换算进去。
         b.style.clipPath = `polygon(${quad
-          .map((p) => `${((p.x - x0) / w) * 100}% ${((p.y - y0) / h) * 100}%`)
+          .map(
+            (p: { x: number; y: number }) =>
+              `${((p.x - x0) / w) * 100}% ${((p.y - y0) / h) * 100}%`,
+          )
           .join(", ")})`;
       } else {
-        // 拿不到四个角就退回中心那个小圆点 —— 宁可小,不要没有。
+        // 拿不到轮廓就退回中心那个小圆点 —— 宁可小,不要没有。
         const { x, y } = stage?.toScreen(port) ?? { x: 0.5, y: 0.5 };
         b.classList.remove("area");
         b.style.left = `${x * 100}%`;

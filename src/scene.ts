@@ -368,6 +368,35 @@ function channel(from: Vec3, to: Vec3): { group: Group; water: Mesh; half: Mesh 
   return { group: g, water, half };
 }
 
+/** 每个方位角的隐身方向:沿它走,屏幕位置一动不动 —— 它就是那一档的视线方向。
+ *  `spec/iso.test.ts` 把这四个值钉住了。 */
+const HIDDEN: Record<number, Vec3> = {
+  45: [1, 1, 1],
+  135: [-1, 1, 1],
+  225: [-1, 1, -1],
+  315: [1, 1, -1],
+};
+
+/** 一把点的凸包(单调链)。只用来把八个投影角围成一个轮廓,给 clip-path 用。 */
+function hull(pts: { x: number; y: number }[]): { x: number; y: number }[] {
+  const p = [...pts].sort((a, b) => a.x - b.x || a.y - b.y);
+  const cross = (
+    o: { x: number; y: number },
+    a: { x: number; y: number },
+    b: { x: number; y: number },
+  ): number => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const half = (src: typeof p): typeof p => {
+    const out: typeof p = [];
+    for (const q of src) {
+      while (out.length >= 2 && cross(out[out.length - 2], out[out.length - 1], q) <= 0) out.pop();
+      out.push(q);
+    }
+    out.pop();
+    return out;
+  };
+  return [...half(p), ...half([...p].reverse())];
+}
+
 /** 一块正在转、或者将要转的砖。 */
 export type Turning = { group: Group; part: PartId; shown: number; target: number };
 
@@ -582,13 +611,19 @@ export type Stage = {
   /** 某个 port 在画面上的位置(0–1),给 DOM 按钮定位用。用的是同一个投影。 */
   toScreen: (port: PortId) => { x: number; y: number };
   /**
-   * 某个 port **顶面那一格**投到画面上的四个角(0–1,顺时针)。
+   * 某个 port **整件几何**投到画面上的轮廓(凸包,0–1)。
    *
-   * 有了它,可点区域就是玩家看见的那块砖本身,而不是砖中心的一个小圆点。
-   * 四个角一样是穿过相机投影出来的(§3.3),没有射线检测、没有角度运算 ——
-   * 「哪里可点」和「哪里画得出来」因此是同一次计算的两个出口,不可能对不上。
+   * 可点区域因此就是玩家看见的那个形状本身。一度只取顶面那一格的四个角,
+   * 而露台现在是整层高的塔 —— 顶面只是塔上一个小菱形,点在塔身上就落空,
+   * 塔越高落空的面积越大。作者的话是「有的时候识别不到,这个问题出现了好多次」。
+   *
+   * 取的是那件几何的包围盒八个角,穿过同一个相机投影(§3.3),再求凸包 ——
+   * 没有射线检测,「哪里可点」和「哪里画得出来」仍然是同一次计算的两个出口。
    */
-  toScreenQuad: (port: PortId) => { x: number; y: number }[];
+  toScreenHull: (port: PortId) => { x: number; y: number }[];
+  /** 这个 port 离相机多近(越大越近)。给覆盖层排叠放顺序用:轮廓会互相
+   *  重叠,谁压在上面必须和画面里谁在前面一致,否则点到的是被挡住的那块。 */
+  depthOf: (port: PortId) => number;
   resize: (w: number, h: number) => void;
   dispose: () => void;
 };
@@ -607,7 +642,7 @@ export function createStage(canvas: HTMLCanvasElement, level: Level, layout: Lay
   scene.add(sun);
   scene.add(new AmbientLight("#ffffff", LIGHT.ambientIntensity));
 
-  const { world, turning, waters, poolWater, grandWater, grandSpray, beast } =
+  const { world, turning, pieces, waters, poolWater, grandWater, grandSpray, beast } =
     buildWorld(level, layout);
   scene.add(world);
 
@@ -832,28 +867,28 @@ export function createStage(canvas: HTMLCanvasElement, level: Level, layout: Lay
       }
       return frameFraction(sx, sy, camera);
     },
-    toScreenQuad: (port) => {
-      const pts = anchorPoints(port);
-      if (pts.length === 0) return [];
-      // 一格宽:锚点是格心,所以四条边各让开半格。渠有两个锚点,包住它们就是
-      // 那条一格宽的带子 —— 和 §3.5 说的「一格宽的槽」是同一个形。
-      const xs = pts.map((p) => p[0]);
-      const zs = pts.map((p) => p[2]);
-      const x0 = Math.min(...xs) - TILE / 2;
-      const x1 = Math.max(...xs) + TILE / 2;
-      const z0 = Math.min(...zs) - TILE / 2;
-      const z1 = Math.max(...zs) + TILE / 2;
-      const y = pts[0][1];
-      const corners: Vec3[] = [
-        [x0, y, z0],
-        [x1, y, z0],
-        [x1, y, z1],
-        [x0, y, z1],
-      ];
-      return corners.map((c) => {
-        const [sx, sy] = project(offset(c), snappedAz());
-        return frameFraction(sx, sy, camera);
-      });
+    toScreenHull: (port) => {
+      const piece = pieces.get(port);
+      if (!piece) return [];
+      const box = new Box3().setFromObject(piece);
+      if (!isFinite(box.min.x)) return [];
+      const az = snappedAz();
+      const pts: { x: number; y: number }[] = [];
+      for (const bx of [box.min.x, box.max.x]) {
+        for (const by of [box.min.y, box.max.y]) {
+          for (const bz of [box.min.z, box.max.z]) {
+            const [sx, sy] = project([bx, by, bz], az);
+            pts.push(frameFraction(sx, sy, camera));
+          }
+        }
+      }
+      return hull(pts);
+    },
+    depthOf: (port) => {
+      // 隐身方向就是视线方向:沿它走屏幕位置不变,而点积越大离相机越近。
+      const h = HIDDEN[snappedAz()];
+      const p = anchorPoints(port)[0] ?? [0, 0, 0];
+      return p[0] * h[0] + p[1] * h[1] + p[2] * h[2];
     },
     resize: (w, h) => {
       renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
