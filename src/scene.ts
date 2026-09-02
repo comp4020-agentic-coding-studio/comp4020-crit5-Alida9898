@@ -161,9 +161,13 @@ function steps(from: Vec3, to: Vec3): Group {
     const depth = run / n;
     // 每一级都从**底**实心长到它自己的顶面 —— 侧面因此是一道阶梯状的实体,
     // 和露台「侧面是主体的实心挤出」是同一句话。
+    // 沿走向让开半格:锚点是**格心**,而一段梯要接上的是隔壁那块砖的**边**。
+    // 这一段一度写成 `- run / 2`,也就是把整段梯画在 `from` 上居中 —— 下半截
+    // 伸到出生点后面,上半截只走到一半,两头都对不上。进深从一格加到两格之后
+    // 偏差从 0.5 变成 1.0,所以「上一版和现在差那么大」。
     const piece = new Mesh(
       new BoxGeometry(TILE, top, depth)
-        .translate(0, top / 2, depth * (i + 0.5) - run / 2)
+        .translate(0, top / 2, TILE / 2 + depth * (i + 0.5))
         .rotateY(angle),
       lambert(PALETTE.sandstone.mid),
     );
