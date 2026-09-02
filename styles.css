@@ -59,6 +59,10 @@ main {
   flex-direction: column;
   align-items: center;
   justify-content: center;
+
+  /* 没有它,`.stage` 的 flex:1 撑到底,底下那排选关点被挤出视口 ——
+     body 是 overflow:hidden,所以挤出去就是彻底看不见,而不是能滚下去。 */
+  min-height: 0;
   gap: 1rem;
   padding: 1rem 1rem 1.5rem;
 }
@@ -213,11 +217,12 @@ h1 {
 }
 
 /* 点本身就是按钮:进度和选关是同一个东西,屏幕上不多一个元素。
-   命中区比看得见的点大得多 —— 0.5rem 的圆点点不中,而这排按钮是键盘用户
-   唯一能到达的「有几关」。 */
+   第一版是 1.5rem 的命中区裹一个 0.5rem 的空心圆,贴在视口最底边 —— 作者的话
+   是「没有选关的呀,我怎么没看见」。看不见的控件等于不存在,所以圆点放大、
+   描边加粗、未选中的也给一点底色,让它读起来是「可以按的东西」。 */
 .progress button {
-  width: 1.5rem;
-  height: 1.5rem;
+  width: 2rem;
+  height: 2rem;
   padding: 0;
   border: 0;
   background: none;
@@ -226,11 +231,12 @@ h1 {
 
 .progress button::before {
   display: block;
-  width: 0.5rem;
-  height: 0.5rem;
+  width: 0.9rem;
+  height: 0.9rem;
   margin: 0 auto;
-  border: 1px solid var(--lapis-dark);
+  border: 2px solid var(--lapis-dark);
   border-radius: 50%;
+  background: var(--sandstone-light);
   content: "";
   transition: background 200ms ease-out;
 }
